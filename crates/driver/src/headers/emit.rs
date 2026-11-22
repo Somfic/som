@@ -36,6 +36,11 @@ pub(super) fn generate(
     };
     let mut c = Converter::of(decls, target);
     let functions = emitter.functions(&mut c, exported);
+    // The header's own structs, used or not: one a library takes through a `void *`, like
+    // a chained descriptor, is still filled in by the program.
+    if library != Some(LIBC) {
+        emitter.own_structs(&mut c);
+    }
 
     let mut out = format!("// Imported from {header} by the som compiler.\n");
     out.push_str(&functions.skipped);
@@ -207,6 +212,22 @@ impl Emitter<'_> {
     /// `pub enum KeyboardKey { Null = 0, W = 87 }`, and `KeyboardKey::W as i32` is 87.
     /// Functions still take C's enums as `i32`, as C does. Only the header's own enums
     /// are written, not ones it pulls in from the system's.
+    /// Imports each struct the header itself defines that som can express.
+    fn own_structs(&mut self, c: &mut Converter) {
+        let header_file = Path::new(self.header).file_name();
+        for decl in self.decls {
+            let defined = decl["kind"] == "RecordDecl"
+                && decl["tagUsed"] == "struct"
+                && decl["completeDefinition"] == true;
+            let in_header = (decl["id"].as_str())
+                .and_then(|id| self.docs.files.get(id))
+                .is_some_and(|file| Path::new(file).file_name() == header_file);
+            if let (true, true, Some(tag)) = (defined, in_header, decl["name"].as_str()) {
+                let _ = c.import_struct(tag);
+            }
+        }
+    }
+
     fn enums(&mut self, c: &Converter) -> String {
         let taken: HashSet<&str> = (c.structs.keys().chain(c.handles.keys()))
             .map(String::as_str)

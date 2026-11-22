@@ -8,4 +8,13 @@ pub fn null<T>() -> *T {
 
 pub fn leave(p: &mut *) {}
 
+/// A `T` with every byte zero: for a C library's struct, whose fields are then set one by
+/// one, `let mut d: WGPUTextureDescriptor = zeroed(); d.width = 64;`.
+pub fn zeroed<T>() -> T {
+    untouched(out value);
+    value
+}
+
+fn untouched<T>(value: &mut T) {}
+
 pub fn forget<T>(value: T) {}

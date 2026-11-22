@@ -1,8 +1,9 @@
 # Shaders
 
-*Status (2026-11-21): `@fragment` shaders, and closures written as shaders, compile to GLSL
-3.30 and run through raylib (`example/main.som`, `example/shader`, `example/shooter`).
-`@vertex` is parsed but not compiled yet. WGSL/wgpu is planned.*
+*Status (2026-11-22): `@fragment` shaders, and closures written as shaders, compile to GLSL
+3.30 and run through raylib (`example/main.som`, `example/shader`, `example/shooter`), and to
+WGSL and run through WebGPU (wgpu-native, `example/wgpu`). `@vertex` is parsed but not
+compiled yet.*
 
 A shader is ordinary som code that runs on the GPU for each pixel: a closure that takes a
 `Fragment`, written where it's drawn, or a function marked `@fragment`. It's compiled for
@@ -71,7 +72,41 @@ RaylibShader<U>`, or `RaylibShader::empty()` for a closure). It draws with
 
 The uniforms' fields have to be `pub` for now: `each` reads them from the standard library.
 
+## WebGPU: the same shaders in WGSL
+
+`gpu::wgsl(shader)` is `gpu::glsl` in WGSL, for WebGPU. The same closures draw on either:
+
+```som
+let mut gpu = Gpu::open("wgpu", 800, 450);        // example/wgpu/webgpu.som
+let mut shader = WgpuShader::empty();
+while gpu.frame() {
+    let time = gpu.time();
+    shader.fullscreen(&mut gpu, (frag) => vec4(frag.uv.x, 0.5 + 0.5 * time.sin(), 0.0, 1.0));
+    gpu.present();
+}
+```
+
+`example/wgpu/webgpu.som` opens a window with SDL3 and draws with wgpu-native
+(`brew install wgpu-native sdl3`), both imported from their headers. What WGSL makes different:
+
+- **One uniform buffer.** WGSL has no loose uniforms, so every uniform but a texture is a member
+  of `SomUniforms` (group 0, binding 0), in the order `each_uniform` gives them. The host packs
+  them by WGSL's rules: each at the next multiple of its alignment (4 for a number, 8 for a
+  `vec2`, 16 for a `vec3`/`vec4`). An array's items are 16 bytes apart, so `[f32; N]` and
+  `[Vec2; N]` are declared as arrays of `vec4`s, and the shader copies out the first of each.
+  A `bool` is a `u32`.
+- **Textures and a sampler.** The sampler is binding 1, each texture the next, in order.
+  `sample` is `textureSampleLevel`, which (unlike `textureSample`) can be inside a branch.
+- **Its own vertex shader.** The module has `vs_main`, one triangle over the viewport, and
+  `fs_main`, which calls the shader. The host sets the viewport to where the shader is drawn.
+  `frag.position` is in pixels from the top left (GLSL's `gl_FragCoord` is from the bottom left).
+
+`tests/tests/wgsl.rs` checks every compiling shader in `tests/corpus/shaders` with naga, wgpu's
+own shader compiler. `SOM_WGSL_EXTRA=example/shooter` checks one more program's.
+
 ## Seeing the GLSL
+
+`som build --emit wgsl` is the same in WGSL (`main.stripes.wgsl`).
 
 `som build --emit glsl` writes every `@fragment` and `@vertex` function as the GPU gets it, a
 file each next to the output (`main.stripes.frag`); `--emit glsl=DIR` puts them in DIR, and
@@ -197,6 +232,11 @@ The translation is MIR → GLSL, function by function:
 | what can't be laid out that way (a `break` out of two loops) | `switch` on the next block, inside `for (;;)` |
 
 `tests/tests/glsl.rs` runs every compiling shader in `tests/corpus/shaders` through `glslc`.
+
+WGSL is the same translation with a different `Target` (`lib.rs`): its own types (`vec4<f32>`,
+`array<T, N>`), `var` declarations, `select` for `?:`, a `ptr<function, T>` for a `&mut T`
+parameter (given `&place`, read through `(*p)`), WGSL's names for GLSL's built-ins, and the
+uniforms flattened into one buffer (`entry.rs`, `wgsl_uniforms`).
 
 ## Next
 

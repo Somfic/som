@@ -21,6 +21,15 @@ pub fn glsl<F>(entry: F) -> string {
     @fail("`glsl` takes a shader by its name, `glsl(wobble)`, or a closure written as one")
 }
 
+/// The source of shader `entry` in WGSL, for WebGPU, as `glsl` gives GLSL: a fragment
+/// shader `fs_main`, and a vertex shader `vs_main` drawing it over the whole viewport. The
+/// uniforms are in one buffer, binding 0 of group 0, laid out in the order `each_uniform`
+/// gives them (see `Layout`); the sampler is binding 1 and each texture the next.
+pub fn wgsl<F>(entry: F) -> string {
+    // The compiler gives each use the shader's source instead.
+    @fail("`wgsl` takes a shader by its name, `wgsl(wobble)`, or a closure written as one")
+}
+
 /// Calls `set` with each of `uniforms`' uniforms, in order: its index, its name as the GPU has
 /// it, and its value. `uniforms` is a shader's struct of uniforms (each field, going into
 /// those that are structs of the program's own, `camera.pos`), or a shader written as a

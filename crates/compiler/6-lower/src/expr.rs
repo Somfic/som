@@ -27,7 +27,7 @@ impl FnBuilder<'_, '_> {
 
     /// `is_even` where a `fn(&i32) -> bool` is expected: the address of the function its
     /// type names.
-    fn address_of(&mut self, expr: Id<Expr>) -> Operand {
+    pub(super) fn address_of(&mut self, expr: Id<Expr>) -> Operand {
         // Worked out for what doing so does; a function's own type holds nothing.
         self.operand_unwrapped(expr);
         let item = self.expr_ty(expr);

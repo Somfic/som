@@ -1,0 +1,14 @@
+// expect: exit 19
+
+/// A function's address, `by_value as *`, is what C calls back: here `qsort`'s comparison.
+extern {
+    fn qsort(items: *, count: u64, size: u64, compare: *);
+}
+
+fn by_value(a: *, b: *) -> i32 = *(a as *i32).at(0) - *(b as *i32).at(0);
+
+fn main() -> i32 {
+    let mut numbers = [5, 2, 9, 1];
+    qsort(&mut numbers as *, 4, 4, by_value as *);
+    numbers[0] * 10 + numbers[3]
+}

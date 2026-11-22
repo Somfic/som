@@ -34,6 +34,8 @@ pub struct Mir {
     /// the shader it's for: `None` if what it's given isn't a function named where it's
     /// passed.
     pub glsl: HashMap<FuncId, Option<FuncId>>,
+    /// Each instance of `wgsl`, the same in WGSL.
+    pub wgsl: HashMap<FuncId, Option<FuncId>>,
     /// The copies of functions compiled for the GPU, and GLSL's own functions: only shaders
     /// use them, never the program on the CPU.
     pub gpu: HashSet<FuncId>,
@@ -54,6 +56,7 @@ impl Mir {
             tests: None,
             stages: HashMap::new(),
             glsl: HashMap::new(),
+            wgsl: HashMap::new(),
             lang_structs: HashMap::new(),
             gpu: HashSet::new(),
             struct_index: HashMap::new(),

@@ -44,7 +44,10 @@ impl Checker<'_> {
             && matches!(self.u.shallow_ty(target), Ty::Int(_));
         let pointer = |c: &Self, ty: TypeId| matches!(c.u.shallow_ty(ty), Ty::Pointer | Ty::Ptr(_));
         let reference = |c: &Self, ty: TypeId| matches!(c.u.shallow_ty(ty), Ty::Ref { .. });
-        let pointers = (pointer(self, found) || reference(self, found)) && pointer(self, target);
+        // A function's address, for C to call: `on_done as *`, a callback.
+        let function = |c: &Self, ty: TypeId| matches!(c.u.shallow_ty(ty), Ty::Fn { .. } | Ty::FnItem(..));
+        let pointers = (pointer(self, found) || reference(self, found) || function(self, found))
+            && pointer(self, target);
         // C's text is a pointer to its bytes: `bytes as cstr`, `text as *u8`.
         let cstr = |c: &Self, ty: TypeId| matches!(c.u.shallow_ty(ty), Ty::CStr);
         let c_text = (cstr(self, found) && pointer(self, target))

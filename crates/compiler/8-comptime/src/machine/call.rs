@@ -171,7 +171,10 @@ impl Machine<'_, '_> {
             .collect::<Result<Vec<_>, _>>()?;
         let dest = self.loc(place, span)?;
         if let Some(&shader) = self.mir().glsl.get(&func) {
-            return self.glsl(shader, dest, span);
+            return self.shader_source(shader, som_shader::Target::Glsl, dest, span);
+        }
+        if let Some(&shader) = self.mir().wgsl.get(&func) {
+            return self.shader_source(shader, som_shader::Target::Wgsl, dest, span);
         }
         let function = &self.mir().funcs[func];
         if function.body.is_none() {
@@ -227,9 +230,10 @@ impl Machine<'_, '_> {
 
 impl Machine<'_, '_> {
     /// `@glsl(shader)`: the shader's source for the GPU, as text, into `dest`.
-    fn glsl(
+    fn shader_source(
         &mut self,
         shader: Option<FuncId>,
+        target: som_shader::Target,
         (dest, ty): (Loc, TypeId),
         span: &Span,
     ) -> Result<(), Stop> {
@@ -239,7 +243,11 @@ impl Machine<'_, '_> {
                 span.clone(),
             ));
         };
-        match som_shader::glsl(self.mir(), shader) {
+        let source = match target {
+            som_shader::Target::Glsl => som_shader::glsl(self.mir(), shader),
+            som_shader::Target::Wgsl => som_shader::wgsl(self.mir(), shader),
+        };
+        match source {
             Ok(source) => {
                 let value = self.text(&source, ty, span)?;
                 self.write(&dest, ty, value, span)

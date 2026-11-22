@@ -194,7 +194,9 @@ impl<'a> Lowerer<'a> {
         if *self.ast.modules[self.names.def(def).module].name == *som_lang::GL_MODULE {
             self.mir.gpu.insert(id);
         }
-        if self.names.lang_func(som_lang::LangFunc::Glsl) == Some(def) {
+        let glsl = self.names.lang_func(som_lang::LangFunc::Glsl) == Some(def);
+        let wgsl = self.names.lang_func(som_lang::LangFunc::Wgsl) == Some(def);
+        if glsl || wgsl {
             // The shader as it's compiled for the GPU: its `@if GPU`s take the GPU's branch.
             // A closure, or a `&` to one: its body, a fragment shader taking its captures.
             let mut given = type_args.first().copied();
@@ -224,7 +226,10 @@ impl<'a> Lowerer<'a> {
                 }
                 _ => None,
             };
-            self.mir.glsl.insert(id, entry);
+            match glsl {
+                true => self.mir.glsl.insert(id, entry),
+                false => self.mir.wgsl.insert(id, entry),
+            };
         }
         if let Some(at) = &self.at {
             self.requested_at.insert(id, at.clone());

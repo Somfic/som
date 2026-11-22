@@ -55,6 +55,9 @@ pub struct Shader {
     pub stage: som_lang::Stage,
     /// Its GLSL 3.30 source, as `@glsl` gives it.
     pub glsl: String,
+    /// Its WGSL source, as `gpu::wgsl` gives it, if it can be: only an error where `wgsl`
+    /// asks for it.
+    pub wgsl: Option<String>,
 }
 
 /// Why a program didn't pass its checks, with whatever warnings were found on the way.

@@ -1,0 +1,24 @@
+// expect: exit 0
+
+/// `zeroed()` is a struct with every field 0, for C's structs filled in a field at a time.
+use som::mem;
+
+struct Options {
+    width: i32,
+    scale: f32,
+    flags: [u8; 4],
+    on: bool,
+    next: *,
+}
+
+fn main() -> i32 {
+    let mut options: Options = zeroed();
+    if options.width != 0 || options.scale != 0.0 || options.flags[3] != 0 || options.on {
+        return 1;
+    }
+    if options.next != null() {
+        return 2;
+    }
+    options.width = 3;
+    options.width - 3
+}

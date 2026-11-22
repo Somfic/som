@@ -326,6 +326,10 @@ impl Converter {
         while let Some(underlying) = self.typedefs.get(&pointee).filter(|u| **u != pointee) {
             pointee = underlying.trim().to_string();
         }
+        // `WGPUBindGroupLayout const *`, a typedef of `struct …Impl *`: an array of handles.
+        if pointee.trim_end_matches("const").trim_end().ends_with('*') {
+            return POINTER.into();
+        }
         if let Some(tag) = pointee.strip_prefix("struct ")
             && !self.records.contains_key(tag)
             && let Some(name) = self.handle(tag)
@@ -349,7 +353,7 @@ impl Converter {
     }
 
     /// A struct, under its som name: `struct ma_device` is `MaDevice`.
-    fn import_struct(&mut self, tag: &str) -> Result<String, String> {
+    pub fn import_struct(&mut self, tag: &str) -> Result<String, String> {
         let name = pascal_case(tag);
         match self.tags.get(&name) {
             Some(other) if other == tag => return Ok(name),
@@ -468,6 +472,9 @@ mod tests {
         assert_eq!(c.ty("size_t").unwrap(), "u64");
         assert_eq!(c.ty("void (*)(int)").unwrap(), "*");
         assert_eq!(c.ty("enum Mode").unwrap(), "i32");
+        c.typedefs.insert("Handle".into(), "struct opaque *".into());
+        assert_eq!(c.ty("const Handle *").unwrap(), "*");
+        assert_eq!(c.ty("Handle").unwrap(), "Opaque");
         assert!(c.ty("float [4]").is_err());
     }
 

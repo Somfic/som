@@ -269,6 +269,11 @@ impl FnBuilder<'_, '_> {
                 ty,
             };
         }
+        // A function's address, for C: `on_done as *`.
+        if matches!(self.l.mir.types.get(from), Ty::FnItem(..)) {
+            let operand = self.address_of(value);
+            return Rvalue::Cast { operand, ty };
+        }
         let operand = self.number(value);
         if let Ty::Struct(def, _) = *self.l.mir.types.get(from)
             && let DefKind::Struct(s) = self.l.names.def(def).kind

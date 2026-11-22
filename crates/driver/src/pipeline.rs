@@ -157,8 +157,23 @@ impl Passes<'_> {
         entries.sort_by_key(|(f, _)| mir.funcs[*f].span.start_offset);
         let mut shaders = Vec::new();
         let mut sources = std::collections::HashMap::new();
+        let mut wgsl_sources = std::collections::HashMap::new();
         let mut errors = Vec::new();
+        let wanted: std::collections::HashSet<_> = mir.wgsl.values().flatten().copied().collect();
         for (entry, stage) in entries {
+            let wgsl = match som_shader::wgsl(mir, entry) {
+                Ok(wgsl) => {
+                    wgsl_sources.insert(entry, wgsl.clone());
+                    Some(wgsl)
+                }
+                Err(found) => {
+                    // Said once, if the GLSL can be made: the same problems, likely.
+                    if wanted.contains(&entry) && som_shader::glsl(mir, entry).is_ok() {
+                        errors.extend(found.into_iter().map(Error::Shader));
+                    }
+                    None
+                }
+            };
             match som_shader::glsl(mir, entry) {
                 Ok(glsl) => {
                     sources.insert(entry, glsl.clone());
@@ -166,16 +181,20 @@ impl Passes<'_> {
                         name: som_shader::short_fn(&mir.funcs[entry].name),
                         stage,
                         glsl,
+                        wgsl,
                     });
                 }
                 Err(found) => errors.extend(found.into_iter().map(Error::Shader)),
             }
         }
         self.report(errors)?;
-        let instances: Vec<_> = mir.glsl.iter().map(|(&f, &entry)| (f, entry)).collect();
-        for (instance, entry) in instances {
-            if let Some(source) = entry.and_then(|entry| sources.get(&entry)) {
-                mir.funcs[instance].body = Some(gives_text(mir, instance, source));
+        let instances: Vec<_> = (mir.glsl.iter().map(|(&f, &entry)| (f, entry, &sources)))
+            .chain(mir.wgsl.iter().map(|(&f, &entry)| (f, entry, &wgsl_sources)))
+            .map(|(f, entry, sources)| (f, entry.and_then(|e| sources.get(&e)).cloned()))
+            .collect();
+        for (instance, source) in instances {
+            if let Some(source) = source {
+                mir.funcs[instance].body = Some(gives_text(mir, instance, &source));
             }
         }
         Ok(shaders)

@@ -134,7 +134,13 @@ needed by the `@gpu` work too.
 - [x] Every shader is checked (and `--emit glsl` writes it) whether or not `@glsl` asks for it.
 - [ ] `glsl` called without `@` fails at run time; make it a compile error.
 - [ ] Generated names are long (`som_data_Vector_4_f32`); shorten where unambiguous.
-- [ ] WGSL emitter + wgpu-native host, then compute kernels (`@compute`), see the Parallelism section.
+- [x] WGSL emitter (`gpu::wgsl`, `--emit wgsl`, checked by naga) and a wgpu-native + SDL3 host in `example/wgpu` (2026-11-22).
+- [ ] Compute kernels (`@compute`) on WebGPU, see the Parallelism section.
+- [ ] The wgpu host as a library of its own (and raylib's adapter likewise), not copied into examples.
+- [ ] The shooter on wgpu: its input and HUD are raylib's; needs keyboard/mouse from SDL and text.
+- [ ] Imported C enums whose variants start with a digit keep their whole name (`WGPUTextureDimension::WGPUTextureDimension2D`).
+- [ ] `static const` flags in headers (`WGPUBufferUsage_Uniform`) aren't imported; the wgpu host writes them out.
+- [ ] Closures can't change what they capture, so the wgpu host packs uniforms through a raw pointer.
 
 From writing `example/shooter` (a raycasting shooter, 2026-11-21), what made shaders harder than they should be:
 

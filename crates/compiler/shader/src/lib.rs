@@ -78,15 +78,42 @@ pub(crate) fn head(span: &Span) -> Span {
     Span::from_range(span.start_offset..span.start_offset + end, span.source.clone())
 }
 
+/// The language a shader is written out in.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Target {
+    /// GLSL 3.30, for OpenGL 3.3 and raylib: uniforms each by name, raylib's vertex shader.
+    Glsl,
+    /// WGSL, for WebGPU: the uniforms in one buffer, a texture's sampler apart, and a vertex
+    /// shader of its own (see [`entry`]).
+    Wgsl,
+}
+
 /// The GLSL 3.30 source of shader `entry`: what a graphics library loads.
 pub fn glsl(mir: &Mir, entry: FuncId) -> Result<String, Vec<ShaderError>> {
+    translate(mir, entry, Target::Glsl)
+}
+
+/// The WGSL source of shader `entry`, for WebGPU: entry points `vs_main` and `fs_main`.
+pub fn wgsl(mir: &Mir, entry: FuncId) -> Result<String, Vec<ShaderError>> {
+    translate(mir, entry, Target::Wgsl)
+}
+
+fn translate(mir: &Mir, entry: FuncId, target: Target) -> Result<String, Vec<ShaderError>> {
     let mut t = Translator {
         mir,
         entry,
+        target,
+        textures: HashMap::new(),
         structs: Vec::new(),
         struct_names: HashMap::new(),
         func_names: HashMap::new(),
-        used: HashSet::new(),
+        // What's around a WGSL shader.
+        used: match target {
+            Target::Glsl => HashSet::new(),
+            Target::Wgsl => ["SomVertex", "SomUniforms", "som_u", body::SAMPLER, "vs_main", "fs_main"]
+                .map(String::from)
+                .into(),
+        },
         uniforms: None,
         uniform_paths: HashMap::new(),
         uniform_structs: HashMap::new(),
@@ -115,6 +142,10 @@ pub fn glsl(mir: &Mir, entry: FuncId) -> Result<String, Vec<ShaderError>> {
 pub(crate) struct Translator<'a> {
     pub mir: &'a Mir,
     entry: FuncId,
+    pub target: Target,
+    /// In WGSL, each texture among the uniforms, by its path as GLSL names its uniform
+    /// (`camera.sky`): the global it's bound to.
+    pub textures: HashMap<String, String>,
     /// GLSL struct declarations, each after those it's made of.
     pub structs: Vec<String>,
     pub struct_names: HashMap<TypeId, String>,
@@ -196,17 +227,23 @@ impl Translator<'_> {
         self.recursion();
 
         // Structs first: a uniform can be one.
-        let mut out = String::from("#version 330\n\n");
+        let mut out = match self.target {
+            Target::Glsl => String::from("#version 330\n\n"),
+            Target::Wgsl => String::new(),
+        };
         for s in &self.structs {
             out.push_str(s);
             out.push('\n');
         }
         out.push_str(&main.globals);
         out.push('\n');
-        for (prototype, _) in &self.functions {
-            out.push_str(&format!("{prototype};\n"));
+        // WGSL needs nothing declared before it's used.
+        if self.target == Target::Glsl {
+            for (prototype, _) in &self.functions {
+                out.push_str(&format!("{prototype};\n"));
+            }
+            out.push('\n');
         }
-        out.push('\n');
         for (_, definition) in &self.functions {
             out.push_str(definition);
             out.push('\n');
@@ -216,6 +253,10 @@ impl Translator<'_> {
     }
 
     /// `base`, or with a number after it if that's taken.
+    pub(crate) fn wgsl(&self) -> bool {
+        self.target == Target::Wgsl
+    }
+
     pub(crate) fn unique(&mut self, base: String) -> String {
         let mut name = base.clone();
         let mut n = 2;

@@ -8,3 +8,7 @@ description = "Runs every program in tests/corpus through the compiler"
 [dependencies]
 som_driver = { path = "../crates/driver" }
 tempfile = "3"
+
+[dev-dependencies]
+# Reads and checks WGSL as wgpu does, for `tests/wgsl.rs`.
+naga = { version = "30", features = ["wgsl-in"] }

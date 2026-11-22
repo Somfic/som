@@ -1,0 +1,607 @@
+use extern "wgpu_native" from "webgpu.h";
+use extern "SDL3" from "SDL3/SDL.h";
+use som::mem;
+use som::io;
+use som::gpu;
+
+// som shaders on WebGPU: a window from SDL3, drawn to by wgpu (wgpu-native), each shader a
+// closure compiled to WGSL with `gpu::wgsl`. The same closures `RaylibShader` draws with
+// GLSL draw here.
+
+/// `WGPUStringView`'s length for text ending in a 0 byte.
+@const STRLEN: u64 = 18446744073709551615;
+@const UNDEFINED: u32 = 4294967295;
+/// At most this many bytes of uniforms, and textures, in one shader.
+@const UNIFORM_WORDS: usize = 1024;
+@const MAX_TEXTURES: usize = 8;
+@const MAX_LOADED: usize = 64;
+
+// The flags `webgpu.h` declares as `static const`, which aren't imported.
+@const BUFFER_UNIFORM: u64 = 64;
+@const BUFFER_COPY_DST: u64 = 8;
+@const STAGE_FRAGMENT: u64 = 2;
+@const TEXTURE_COPY_DST: u64 = 2;
+@const TEXTURE_BINDING: u64 = 4;
+@const TEXTURE_RENDER: u64 = 16;
+@const WRITE_ALL: u64 = 15;
+
+// SDL's.
+@const SDL_INIT_VIDEO: u32 = 32;
+@const SDL_WINDOW_RESIZABLE: u64 = 32;
+@const SDL_WINDOW_HIGH_PIXEL_DENSITY: u64 = 8192;
+@const SDL_WINDOW_METAL: u64 = 536870912;
+@const SDL_EVENT_QUIT: u32 = 256;
+@const SDL_EVENT_KEY_DOWN: u32 = 768;
+@const SDL_SCANCODE_ESCAPE: u32 = 41;
+/// wgpu-native's `WGPUSurfaceGetCurrentTextureStatus_Occluded`, from `wgpu.h`.
+@const OCCLUDED: i32 = 196609;
+
+/// A window drawn to by the GPU, through WebGPU.
+pub struct Gpu {
+    window: SDLWindow,
+    instance: WGPUInstanceImpl,
+    surface: WGPUSurfaceImpl,
+    adapter: WGPUAdapterImpl,
+    device: WGPUDeviceImpl,
+    queue: WGPUQueueImpl,
+    /// The surface's pixel format.
+    format: i32,
+    /// Its size, in pixels.
+    pub width: i32,
+    pub height: i32,
+    /// This frame's: what's drawn to, and whether it's been cleared yet.
+    frame: WGPUTextureImpl,
+    view: WGPUTextureViewImpl,
+    cleared: bool,
+    /// Whether there's anything to draw to this frame.
+    drawing: bool,
+    /// The textures loaded, each `gpu::Texture`'s `id` one past its index.
+    views: [WGPUTextureViewImpl; MAX_LOADED],
+    textures: [WGPUTextureImpl; MAX_LOADED],
+    loaded: usize,
+    start: u64,
+}
+
+/// What a callback fills in, and whether it has: an adapter or a device.
+struct Waiting {
+    done: bool,
+    ok: bool,
+    value: *,
+}
+
+fn got_adapter(status: i32, adapter: WGPUAdapterImpl, message: WGPUStringView, into: *, unused: *) {
+    let waiting = (into as *Waiting).at_mut(0);
+    waiting.done = true;
+    waiting.ok = status == WGPURequestAdapterStatus::Success as i32;
+    (&mut waiting.value as *WGPUAdapterImpl).put(0, adapter);
+}
+
+fn got_device(status: i32, device: WGPUDeviceImpl, message: WGPUStringView, into: *, unused: *) {
+    let waiting = (into as *Waiting).at_mut(0);
+    waiting.done = true;
+    waiting.ok = status == WGPURequestDeviceStatus::Success as i32;
+    (&mut waiting.value as *WGPUDeviceImpl).put(0, device);
+}
+
+/// A mistake in how the GPU is used, said when wgpu finds it.
+fn on_error(device: *, kind: i32, message: WGPUStringView, a: *, b: *) {
+    say(message);
+}
+
+fn say(message: WGPUStringView) {
+    write(2, message.data, message.length);
+    write(2, "\n", 1);
+}
+
+extern {
+    fn write(fd: i32, data: cstr, count: u64) -> i64;
+}
+
+/// `text`, which ends in a 0 byte, as WebGPU takes text.
+fn view(text: cstr) -> WGPUStringView = WGPUStringView { data: text, length: STRLEN };
+
+fn waited(instance: WGPUInstanceImpl, waiting: &Waiting) {
+    let at = waiting as * as *Waiting;
+    while !at.at(0).done {
+        wgpu_instance_process_events(instance);
+    }
+}
+
+impl Gpu {
+    /// Opens a window `width` by `height` (in points: more pixels on a high density
+    /// screen) titled `title`, and the GPU to draw to it.
+    pub fn open(title: cstr, width: i32, height: i32) -> Gpu {
+        sdl_init(SDL_INIT_VIDEO);
+        let flags = SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+        let window = sdl_create_window(title, width, height, flags);
+        sdl_raise_window(window);
+        let layer = sdl_metal_get_layer(sdl_metal_create_view(window));
+
+        let instance_descriptor: WGPUInstanceDescriptor = zeroed();
+        let instance = wgpu_create_instance(&instance_descriptor);
+        let mut source: WGPUSurfaceSourceMetalLayer = zeroed();
+        source.chain.s_type = WGPUSType::SurfaceSourceMetalLayer as i32;
+        source.layer = layer;
+        let mut surface_descriptor: WGPUSurfaceDescriptor = zeroed();
+        surface_descriptor.next_in_chain = &source as *;
+        let surface = wgpu_instance_create_surface(instance, &surface_descriptor);
+
+        let mut options: WGPURequestAdapterOptions = zeroed();
+        options.compatible_surface = surface;
+        let mut found = Waiting { done: false, ok: false, value: null() };
+        let mut asked: WGPURequestAdapterCallbackInfo = zeroed();
+        asked.mode = WGPUCallbackMode::AllowProcessEvents as i32;
+        asked.callback = got_adapter as *;
+        asked.userdata1 = &mut found as *;
+        wgpu_instance_request_adapter(instance, &options, asked);
+        waited(instance, &found);
+        if !found.ok {
+            @fail("no GPU adapter");
+        }
+        let adapter = *(&found.value as *WGPUAdapterImpl).at(0);
+
+        let mut device_descriptor: WGPUDeviceDescriptor = zeroed();
+        device_descriptor.uncaptured_error_callback_info.callback = on_error as *;
+        let mut made = Waiting { done: false, ok: false, value: null() };
+        let mut asked_device: WGPURequestDeviceCallbackInfo = zeroed();
+        asked_device.mode = WGPUCallbackMode::AllowProcessEvents as i32;
+        asked_device.callback = got_device as *;
+        asked_device.userdata1 = &mut made as *;
+        wgpu_adapter_request_device(adapter, &device_descriptor, asked_device);
+        waited(instance, &made);
+        if !made.ok {
+            @fail("no GPU device");
+        }
+        let device = *(&made.value as *WGPUDeviceImpl).at(0);
+
+        // Plain 8-bit colour, as raylib draws: a shader's colours are written as they are.
+        let mut capabilities: WGPUSurfaceCapabilities = zeroed();
+        wgpu_surface_get_capabilities(surface, adapter, &mut capabilities);
+        let formats = capabilities.formats as *i32;
+        let mut format = *formats.at(0);
+        for i in 0..capabilities.format_count as usize {
+            if *formats.at(i) == WGPUTextureFormat::BGRA8Unorm as i32 {
+                format = WGPUTextureFormat::BGRA8Unorm as i32;
+            }
+        }
+
+        let mut gpu = Gpu {
+            window,
+            instance,
+            surface,
+            adapter,
+            device,
+            queue: wgpu_device_get_queue(device),
+            format,
+            width: 0,
+            height: 0,
+            frame: zeroed(),
+            view: zeroed(),
+            cleared: false,
+            drawing: false,
+            views: zeroed(),
+            textures: zeroed(),
+            loaded: 0,
+            start: sdl_get_ticks(),
+        };
+        gpu.fit();
+        gpu
+    }
+
+    /// Sizes the surface to the window, if it isn't.
+    fn fit(&mut self) {
+        let mut width = 0;
+        let mut height = 0;
+        sdl_get_window_size_in_pixels(self.window, &mut width, &mut height);
+        if width == self.width && height == self.height {
+            return;
+        }
+        self.width = width;
+        self.height = height;
+        let mut config: WGPUSurfaceConfiguration = zeroed();
+        config.device = self.device;
+        config.format = self.format;
+        config.usage = TEXTURE_RENDER;
+        config.width = width as u32;
+        config.height = height as u32;
+        config.alpha_mode = WGPUCompositeAlphaMode::Auto as i32;
+        config.present_mode = WGPUPresentMode::Fifo as i32;
+        wgpu_surface_configure(self.surface, &config);
+    }
+
+    /// Starts a frame: `false` once the window is closed (or Escape pressed).
+    pub fn frame(&mut self) -> bool {
+        let mut event: [u32; 32] = zeroed();
+        while sdl_poll_event(&mut event as *) {
+            if event[0] == SDL_EVENT_QUIT {
+                return false;
+            }
+            if event[0] == SDL_EVENT_KEY_DOWN && event[6] == SDL_SCANCODE_ESCAPE {
+                return false;
+            }
+        }
+        self.fit();
+        let mut got: WGPUSurfaceTexture = zeroed();
+        wgpu_surface_get_current_texture(self.surface, &mut got);
+        // Not on screen (wgpu-native's `Occluded`), or out of date: nothing's drawn this frame.
+        let ok = got.status == WGPUSurfaceGetCurrentTextureStatus::SuccessOptimal as i32
+            || got.status == WGPUSurfaceGetCurrentTextureStatus::SuccessSuboptimal as i32;
+        self.drawing = ok;
+        if !ok {
+            if got.status != OCCLUDED {
+                self.width = 0;
+            }
+            return true;
+        }
+        self.frame = got.texture;
+        let mut d: WGPUTextureViewDescriptor = zeroed();
+        d.mip_level_count = UNDEFINED;
+        d.array_layer_count = UNDEFINED;
+        d.aspect = WGPUTextureAspect::All as i32;
+        self.view = wgpu_texture_create_view(got.texture, &d);
+        self.cleared = false;
+        true
+    }
+
+    /// Shows what's been drawn this frame.
+    pub fn present(&mut self) {
+        if !self.drawing {
+            sdl_delay(16);
+            return;
+        }
+        wgpu_surface_present(self.surface);
+        wgpu_texture_view_release(self.view);
+        wgpu_texture_release(self.frame);
+    }
+
+    /// Seconds since the window opened.
+    pub fn time(&self) -> f32 = (sdl_get_ticks() - self.start) as f32 / 1000.0;
+
+    /// A texture `width` by `height` of `pixels`, 4 bytes each (red, green, blue, alpha), a
+    /// row at a time: a shader's uniform.
+    pub fn load_texture(&mut self, width: i32, height: i32, pixels: *) -> gpu::Texture {
+        if self.loaded >= MAX_LOADED {
+            @fail("too many textures");
+        }
+        let mut d: WGPUTextureDescriptor = zeroed();
+        d.usage = TEXTURE_BINDING | TEXTURE_COPY_DST;
+        d.dimension = WGPUTextureDimension::WGPUTextureDimension2D as i32;
+        d.size.width = width as u32;
+        d.size.height = height as u32;
+        d.size.depth_or_array_layers = 1;
+        d.format = WGPUTextureFormat::RGBA8Unorm as i32;
+        d.mip_level_count = 1;
+        d.sample_count = 1;
+        let texture = wgpu_device_create_texture(self.device, &d);
+        let mut to: WGPUTexelCopyTextureInfo = zeroed();
+        to.texture = texture;
+        to.aspect = WGPUTextureAspect::All as i32;
+        let mut layout: WGPUTexelCopyBufferLayout = zeroed();
+        layout.bytes_per_row = (width * 4) as u32;
+        layout.rows_per_image = height as u32;
+        let size = WGPUExtent3D { width: width as u32, height: height as u32, depth_or_array_layers: 1 };
+        wgpu_queue_write_texture(self.queue, &to, pixels, (width * height * 4) as u64, &layout, &size);
+        let mut v: WGPUTextureViewDescriptor = zeroed();
+        v.mip_level_count = UNDEFINED;
+        v.array_layer_count = UNDEFINED;
+        v.aspect = WGPUTextureAspect::All as i32;
+        let at = self.loaded;
+        self.textures[at] = texture;
+        self.views[at] = wgpu_texture_create_view(texture, &v);
+        self.loaded = at + 1;
+        gpu::Texture { id: self.loaded as u32, width, height }
+    }
+
+    /// Loads `grid` onto the GPU, as `grid.texture`: a pixel per cell, its number the red.
+    pub fn load_grid(&mut self, grid: &mut gpu::Grid) {
+        let mut pixels: [u32; 4096] = zeroed();
+        let count = (grid.width * grid.height) as usize;
+        if count > 4096 {
+            @fail("a grid of at most 4096 cells");
+        }
+        for y in 0..grid.height {
+            for x in 0..grid.width {
+                let at = (y * grid.width + x) as usize;
+                if at < 4096 {
+                    pixels[at] = (grid.cell(x, y) as u32 & 255) | 4278190080;
+                }
+            }
+        }
+        grid.texture = self.load_texture(grid.width, grid.height, &pixels as *);
+    }
+}
+
+impl Drop for Gpu {
+    fn drop(&mut self) {
+        for i in 0..self.views.len {
+            if i < self.loaded {
+                wgpu_texture_view_release(self.views[i]);
+                wgpu_texture_release(self.textures[i]);
+            }
+        }
+        sdl_destroy_window(self.window);
+        sdl_quit();
+    }
+}
+
+/// The uniforms as they're written to the GPU's buffer: each at the next multiple of its
+/// alignment, as WGSL lays out a uniform buffer (see `gpu::wgsl`).
+struct Packing {
+    /// The next free byte.
+    at: usize,
+    words: [u32; UNIFORM_WORDS],
+    /// Each texture's `id`, in order.
+    textures: [u32; MAX_TEXTURES],
+    texture_count: usize,
+}
+
+impl Packing {
+    fn align(&mut self, to: usize) {
+        if to == 0 {
+            return;
+        }
+        self.at = (self.at + to - 1) / to * to;
+    }
+
+    fn word(&mut self, bits: u32) {
+        let i = self.at / 4;
+        if i < UNIFORM_WORDS {
+            self.words[i] = bits;
+        }
+        self.at = self.at + 4;
+    }
+
+    fn float(&mut self, x: f32) {
+        let mut bits: u32 = 0;
+        (&mut bits as *f32).put(0, x);
+        self.word(bits);
+    }
+
+    /// `count` items of `size` numbers each from `data`, `ints` or not.
+    fn numbers(&mut self, n: gpu::Numbers) {
+        let size = n.size as usize;
+        let words = n.data as *u32;
+        // One vector, `[f32; 3]`: as a `vec3`.
+        if n.count == 1 && size >= 2 {
+            self.align(if size == 2 { 8 } else { 16 });
+            for c in 0..size {
+                self.word(*words.at(c));
+            }
+            return;
+        }
+        // An array: each item 16 bytes apart.
+        for k in 0..n.count as usize {
+            self.align(16);
+            for c in 0..size {
+                self.word(*words.at(k * size + c));
+            }
+        }
+        self.align(16);
+    }
+}
+
+fn pack(into: *, value: gpu::Uniform) {
+    let p = (into as *Packing).at_mut(0);
+    match value {
+        gpu::Uniform::Float(x) => {
+            p.align(4);
+            p.float(x);
+        }
+        gpu::Uniform::Int(x) => {
+            p.align(4);
+            p.word(x as u32);
+        }
+        gpu::Uniform::Bool(b) => {
+            p.align(4);
+            p.word(if b { 1 } else { 0 });
+        }
+        gpu::Uniform::Vec2(v) => {
+            p.align(8);
+            p.float(v[0]);
+            p.float(v[1]);
+        }
+        gpu::Uniform::Vec3(v) => {
+            p.align(16);
+            p.float(v[0]);
+            p.float(v[1]);
+            p.float(v[2]);
+        }
+        gpu::Uniform::Vec4(v) => {
+            p.align(16);
+            p.float(v[0]);
+            p.float(v[1]);
+            p.float(v[2]);
+            p.float(v[3]);
+        }
+        gpu::Uniform::Numbers(n) => p.numbers(n),
+        gpu::Uniform::Texture(t) => {
+            if p.texture_count < MAX_TEXTURES {
+                p.textures[p.texture_count] = t.id;
+            }
+            p.texture_count = p.texture_count + 1;
+        }
+    }
+}
+
+/// A shader written as a closure, `(frag) => …`, drawn with WebGPU: compiled to WGSL and
+/// loaded the first time it's drawn. Each closure written out is its own shader, so one
+/// `WgpuShader` draws one.
+pub struct WgpuShader<U> {
+    loaded: bool,
+    shader: gpu::Shader<U>,
+    pipeline: WGPURenderPipelineImpl,
+    layout: WGPUBindGroupLayoutImpl,
+    buffer: WGPUBufferImpl,
+    sampler: WGPUSamplerImpl,
+    /// The uniform buffer's size, in bytes.
+    size: u64,
+    textures: usize,
+}
+
+impl<U: fn(Fragment) -> Vector<4, f32>> WgpuShader<U> {
+    /// Nothing loaded yet: it is the first time it's drawn.
+    pub fn empty() -> WgpuShader<U> {
+        WgpuShader {
+            loaded: false,
+            shader: gpu::Shader { glsl: "" },
+            pipeline: zeroed(),
+            layout: zeroed(),
+            buffer: zeroed(),
+            sampler: zeroed(),
+            size: 0,
+            textures: 0,
+        }
+    }
+}
+
+impl<U> WgpuShader<U> {
+    /// The shader, closure `uniforms`, over the whole window.
+    pub fn fullscreen(&mut self, gpu: &mut Gpu, uniforms: U) {
+        self.draw(gpu, 0.0, 0.0, gpu.width as f32, gpu.height as f32, uniforms);
+    }
+
+    /// The shader, closure `uniforms`, over `width` by `height` pixels at `x`, `y`: its
+    /// `frag.uv` goes from (0, 0) at the top left to (1, 1) at the bottom right.
+    pub fn draw(&mut self, gpu: &mut Gpu, x: f32, y: f32, width: f32, height: f32, uniforms: U) {
+        if !gpu.drawing {
+            return;
+        }
+        let mut packing = Packing { at: 0, words: zeroed(), textures: zeroed(), texture_count: 0 };
+        let into = &mut packing as *;
+        self.shader.each(&uniforms, (i, name, value) => pack(into, value));
+        packing.align(16);
+        if !self.loaded {
+            let wgsl = gpu::wgsl(&uniforms);
+            self.load(gpu, wgsl, packing.at, packing.texture_count);
+        }
+        let words = &packing.words as *;
+        wgpu_queue_write_buffer(gpu.queue, self.buffer, 0, words, self.size);
+
+        let mut entries: [WGPUBindGroupEntry; 10] = zeroed();
+        entries[0].binding = 0;
+        entries[0].buffer = self.buffer;
+        entries[0].size = self.size;
+        entries[1].binding = 1;
+        entries[1].sampler = self.sampler;
+        for t in 0..self.textures {
+            if t < MAX_TEXTURES && t + 2 < 10 {
+                let id = packing.textures[t] as usize;
+                if id == 0 || id > gpu.loaded || id > MAX_LOADED {
+                    @fail("a texture that isn't loaded");
+                }
+                entries[t + 2].binding = (t + 2) as u32;
+                let index = id - 1;
+                if index < gpu.views.len {
+                    entries[t + 2].texture_view = gpu.views[index];
+                }
+            }
+        }
+        let mut group_descriptor: WGPUBindGroupDescriptor = zeroed();
+        group_descriptor.layout = self.layout;
+        group_descriptor.entry_count = (self.textures + 2) as u64;
+        group_descriptor.entries = &entries as *;
+        let group = wgpu_device_create_bind_group(gpu.device, &group_descriptor);
+
+        let encoder_descriptor: WGPUCommandEncoderDescriptor = zeroed();
+        let encoder = wgpu_device_create_command_encoder(gpu.device, &encoder_descriptor);
+        let mut attachment: WGPURenderPassColorAttachment = zeroed();
+        attachment.view = gpu.view;
+        attachment.depth_slice = UNDEFINED;
+        attachment.load_op = if gpu.cleared { WGPULoadOp::Load as i32 } else { WGPULoadOp::Clear as i32 };
+        attachment.store_op = WGPUStoreOp::Store as i32;
+        attachment.clear_value = WGPUColor { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+        gpu.cleared = true;
+        let mut pass_descriptor: WGPURenderPassDescriptor = zeroed();
+        pass_descriptor.color_attachment_count = 1;
+        pass_descriptor.color_attachments = &attachment as *;
+        let pass = wgpu_command_encoder_begin_render_pass(encoder, &pass_descriptor);
+        wgpu_render_pass_encoder_set_pipeline(pass, self.pipeline);
+        let no_offsets: u32 = 0;
+        wgpu_render_pass_encoder_set_bind_group(pass, 0, group, 0, &no_offsets);
+        wgpu_render_pass_encoder_set_viewport(pass, x, y, width, height, 0.0, 1.0);
+        wgpu_render_pass_encoder_draw(pass, 3, 1, 0, 0);
+        wgpu_render_pass_encoder_end(pass);
+        let finish: WGPUCommandBufferDescriptor = zeroed();
+        let commands = wgpu_command_encoder_finish(encoder, &finish);
+        wgpu_queue_submit(gpu.queue, 1, &commands);
+        wgpu_command_buffer_release(commands);
+        wgpu_render_pass_encoder_release(pass);
+        wgpu_command_encoder_release(encoder);
+        wgpu_bind_group_release(group);
+    }
+
+    /// Compiles `wgsl` for `gpu`, with `size` bytes of uniforms and `textures` textures.
+    fn load(&mut self, gpu: &mut Gpu, wgsl: string, size: usize, textures: usize) {
+        let mut source: WGPUShaderSourceWGSL = zeroed();
+        source.chain.s_type = WGPUSType::ShaderSourceWGSL as i32;
+        source.code = WGPUStringView { data: wgsl.c_str, length: wgsl.len as u64 };
+        let mut module_descriptor: WGPUShaderModuleDescriptor = zeroed();
+        module_descriptor.next_in_chain = &source as *;
+        let module = wgpu_device_create_shader_module(gpu.device, &module_descriptor);
+
+        // The uniforms (binding 0), the sampler (1), then each texture.
+        let mut entries: [WGPUBindGroupLayoutEntry; 10] = zeroed();
+        entries[0].binding = 0;
+        entries[0].visibility = STAGE_FRAGMENT;
+        entries[0].buffer.type_ = WGPUBufferBindingType::Uniform as i32;
+        entries[1].binding = 1;
+        entries[1].visibility = STAGE_FRAGMENT;
+        entries[1].sampler.type_ = WGPUSamplerBindingType::Filtering as i32;
+        for t in 0..textures {
+            if t + 2 < 10 {
+                entries[t + 2].binding = (t + 2) as u32;
+                entries[t + 2].visibility = STAGE_FRAGMENT;
+                entries[t + 2].texture.sample_type = WGPUTextureSampleType::Float as i32;
+                entries[t + 2].texture.view_dimension = WGPUTextureViewDimension::WGPUTextureViewDimension2D as i32;
+            }
+        }
+        let mut layout_descriptor: WGPUBindGroupLayoutDescriptor = zeroed();
+        layout_descriptor.entry_count = (textures + 2) as u64;
+        layout_descriptor.entries = &entries as *;
+        self.layout = wgpu_device_create_bind_group_layout(gpu.device, &layout_descriptor);
+        let layouts = [self.layout];
+        let mut pipeline_layout_descriptor: WGPUPipelineLayoutDescriptor = zeroed();
+        pipeline_layout_descriptor.bind_group_layout_count = 1;
+        pipeline_layout_descriptor.bind_group_layouts = &layouts as *;
+        let pipeline_layout = wgpu_device_create_pipeline_layout(gpu.device, &pipeline_layout_descriptor);
+
+        let mut target: WGPUColorTargetState = zeroed();
+        target.format = gpu.format;
+        target.write_mask = WRITE_ALL;
+        let mut fragment: WGPUFragmentState = zeroed();
+        fragment.module = module;
+        fragment.entry_point = view("fs_main");
+        fragment.target_count = 1;
+        fragment.targets = &target as *;
+        let mut d: WGPURenderPipelineDescriptor = zeroed();
+        d.layout = pipeline_layout;
+        d.vertex.module = module;
+        d.vertex.entry_point = view("vs_main");
+        d.primitive.topology = WGPUPrimitiveTopology::TriangleList as i32;
+        d.primitive.front_face = WGPUFrontFace::Ccw as i32;
+        d.primitive.cull_mode = WGPUCullMode::None as i32;
+        d.multisample.count = 1;
+        d.multisample.mask = UNDEFINED;
+        d.fragment = &fragment as *;
+        self.pipeline = wgpu_device_create_render_pipeline(gpu.device, &d);
+
+        self.size = if size < 16 { 16 } else { size as u64 };
+        let mut buffer_descriptor: WGPUBufferDescriptor = zeroed();
+        buffer_descriptor.usage = BUFFER_UNIFORM | BUFFER_COPY_DST;
+        buffer_descriptor.size = self.size;
+        self.buffer = wgpu_device_create_buffer(gpu.device, &buffer_descriptor);
+
+        let mut sampler_descriptor: WGPUSamplerDescriptor = zeroed();
+        sampler_descriptor.address_mode_u = WGPUAddressMode::ClampToEdge as i32;
+        sampler_descriptor.address_mode_v = WGPUAddressMode::ClampToEdge as i32;
+        sampler_descriptor.address_mode_w = WGPUAddressMode::ClampToEdge as i32;
+        sampler_descriptor.mag_filter = WGPUFilterMode::Nearest as i32;
+        sampler_descriptor.min_filter = WGPUFilterMode::Nearest as i32;
+        sampler_descriptor.mipmap_filter = WGPUMipmapFilterMode::Nearest as i32;
+        sampler_descriptor.lod_max_clamp = 32.0;
+        sampler_descriptor.max_anisotropy = 1;
+        self.sampler = wgpu_device_create_sampler(gpu.device, &sampler_descriptor);
+        self.textures = textures;
+        self.loaded = true;
+    }
+}

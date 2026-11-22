@@ -138,6 +138,8 @@ named_enum! {
         CollectInto = "collect_into",
         /// `@glsl(shader)`: a shader function's source for the GPU, made while compiling.
         Glsl = "glsl",
+        /// `gpu::wgsl(shader)`: the same, in WGSL, for WebGPU.
+        Wgsl = "wgsl",
         /// `gpu::each_uniform(&u, set)`: written by the compiler for each type of uniforms,
         /// a struct or a shader closure.
         EachUniform = "each_uniform",

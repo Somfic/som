@@ -306,7 +306,9 @@ impl Validator<'_> {
         let reference = |t: TypeId| matches!(types.get(t), Ty::Ref { .. });
         // C's text is a pointer to its bytes: `bytes as cstr`, `text as *u8`.
         let cstr = |t: TypeId| matches!(types.get(t), Ty::CStr);
-        let pointers = ((pointer(from) || reference(from)) && pointer(ty))
+        // A function's address, for C to call back.
+        let function = |t: TypeId| matches!(types.get(t), Ty::Fn { .. });
+        let pointers = ((pointer(from) || reference(from) || function(from)) && pointer(ty))
             || (cstr(from) && pointer(ty))
             || (pointer(from) && cstr(ty));
         if !(number(from) && number(ty)) && !slicing && !pointers {

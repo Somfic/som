@@ -19,17 +19,24 @@ pub(crate) enum Scalar {
 }
 
 impl Scalar {
-    pub fn name(self) -> &'static str {
-        match self {
-            Scalar::Bool => "bool",
-            Scalar::Int => "int",
-            Scalar::Uint => "uint",
-            Scalar::Float => "float",
+    /// Its name in GLSL, or with `wgsl` in WGSL.
+    pub fn name(self, wgsl: bool) -> &'static str {
+        match (self, wgsl) {
+            (Scalar::Bool, _) => "bool",
+            (Scalar::Int, false) => "int",
+            (Scalar::Uint, false) => "uint",
+            (Scalar::Float, false) => "float",
+            (Scalar::Int, true) => "i32",
+            (Scalar::Uint, true) => "u32",
+            (Scalar::Float, true) => "f32",
         }
     }
 
-    /// The GLSL vector of `n` of them: `vec4`, `ivec2`.
-    pub fn vector(self, n: u64) -> String {
+    /// The vector of `n` of them: `vec4` and `ivec2` in GLSL, `vec4<f32>` in WGSL.
+    pub fn vector(self, n: u64, wgsl: bool) -> String {
+        if wgsl {
+            return format!("vec{n}<{}>", self.name(true));
+        }
         let prefix = match self {
             Scalar::Bool => "b",
             Scalar::Int => "i",
@@ -111,13 +118,16 @@ impl Translator<'_> {
     /// The GLSL type of `ty`, declaring the structs it needs first.
     pub(crate) fn ty(&mut self, ty: TypeId) -> Result<String, NoGpu> {
         if let Some(scalar) = self.scalar(ty)? {
-            return Ok(scalar.name().into());
+            return Ok(scalar.name(self.wgsl()).into());
         }
         if let Some((scalar, n)) = self.native_vector(ty) {
-            return Ok(scalar.vector(n));
+            return Ok(scalar.vector(n, self.wgsl()));
         }
         if self.is_lang(ty, LangStruct::Texture) {
-            return Ok("sampler2D".into());
+            return Ok(match self.wgsl() {
+                true => "texture_2d<f32>".into(),
+                false => "sampler2D".into(),
+            });
         }
         match self.mir.types.get(ty).clone() {
             Ty::Unit => Ok("void".into()),
@@ -133,7 +143,10 @@ impl Translator<'_> {
                 if n == 0 {
                     return Err(NoGpu::new("empty arrays", None));
                 }
-                Ok(format!("{}[{n}]", self.ty(element)?))
+                Ok(match self.wgsl() {
+                    true => format!("array<{}, {n}>", self.ty(element)?),
+                    false => format!("{}[{n}]", self.ty(element)?),
+                })
             }
             Ty::Str | Ty::CStr => Err(NoGpu::new("text", None)),
             Ty::Char => Err(NoGpu::new(code("char"), None)),
@@ -228,21 +241,41 @@ impl Translator<'_> {
                 }
                 NoGpu::new(code(self.display(ty)), Some(hint))
             })?;
-            lines.push(format!("    {t} {name};"));
+            lines.push(self.member_line(&name, &t));
         }
         // GLSL has no empty structs.
         if lines.is_empty() {
-            lines.push("    bool nothing;".into());
+            lines.push(self.member_line("nothing", "bool"));
         }
         let name = self.unique(base);
-        self.structs
-            .push(format!("struct {name} {{\n{}\n}};\n", lines.join("\n")));
+        let declared = self.struct_text(&name, &lines);
+        self.structs.push(declared);
         self.struct_names.insert(ty, name.clone());
         Ok(name)
     }
 
+    /// Member `name` of type `ty`, as a line of a struct.
+    pub(crate) fn member_line(&self, name: &str, ty: &str) -> String {
+        match self.wgsl() {
+            true => format!("    {name}: {ty},"),
+            false => format!("    {ty} {name};"),
+        }
+    }
+
+    /// Struct `name` with member `lines`, declared.
+    pub(crate) fn struct_text(&self, name: &str, lines: &[String]) -> String {
+        match self.wgsl() {
+            true => format!("struct {name} {{\n{}\n}}\n", lines.join("\n")),
+            false => format!("struct {name} {{\n{}\n}};\n", lines.join("\n")),
+        }
+    }
+
     /// `ty`'s value with every byte zero: `0`, `false`, or a struct or array of those.
     pub(crate) fn zero(&mut self, ty: TypeId) -> Result<String, NoGpu> {
+        // WGSL's constructors with nothing given are zero.
+        if self.wgsl() && self.scalar(ty)?.is_none() {
+            return Ok(format!("{}()", self.ty(ty)?));
+        }
         if let Some(scalar) = self.scalar(ty)? {
             return Ok(match scalar {
                 Scalar::Bool => "false",
