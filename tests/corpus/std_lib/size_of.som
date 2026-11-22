@@ -1,0 +1,17 @@
+// expect: exit 0
+
+/// `size_of<T>()` is how many bytes a `T` takes, as C lays it out: what a C library copying
+/// `T`s is told.
+use som::mem;
+
+struct Particle { pos: [f32; 2], vel: [f32; 2], age: f32 }
+struct Mixed { flag: bool, n: i64 }
+
+fn main() -> i32 {
+    if size_of<i32>() != 4 { return 1; }
+    if size_of<Particle>() != 20 { return 2; }
+    // C puts `n` 8 bytes in, after room left after `flag`.
+    if size_of<Mixed>() != 16 { return 3; }
+    if size_of<[u8; 3]>() != 3 { return 4; }
+    0
+}

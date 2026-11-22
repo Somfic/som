@@ -92,13 +92,17 @@ impl Body<'_> {
                 continue;
             }
             self.span = decl.span.clone();
-            if t.is_lang(decl.ty, LangStruct::Texture) {
+            if t.is_handle(decl.ty) {
+                let what = match t.is_lang(decl.ty, LangStruct::Texture) {
+                    true => "texture",
+                    false => "buffer",
+                };
                 return Err(Problem {
-                    message: "a shader can't keep a texture in a variable".into(),
+                    message: format!("a shader can't keep a {what} in a variable").into(),
                     span: decl.span.clone(),
                     label: match &decl.name {
-                        Some(name) => msg![code(name), " holds a texture"],
-                        None => "this holds a texture".into(),
+                        Some(name) => msg![code(name), " holds a ", what],
+                        None => format!("this holds a {what}").into(),
                     },
                     hint: Some(msg![
                         "use it where it's named, ",
@@ -533,7 +537,7 @@ impl Body<'_> {
                 Projection::Field(index)
                     if t.uniform_paths.contains_key(&ty)
                         && (t.mir.project(ty, Projection::Field(index)))
-                            .is_some_and(|f| t.is_lang(f, LangStruct::Texture)) =>
+                            .is_some_and(|f| t.is_handle(f)) =>
                 {
                     let Ty::Struct(def, args) = t.mir.types.get(ty) else {
                         unreachable!("uniforms are a struct")
@@ -799,6 +803,20 @@ impl Body<'_> {
             }
         };
         // What it takes and gives has to be on the GPU: said at the call, not inside it.
+        // A buffer's item: read word by word, by a function made for the buffer.
+        if t.wgsl() && callee.name.starts_with("som::gpu::Buffer::get<") {
+            let ret = callee.ret;
+            let texts = (args.iter())
+                .map(|op| self.operand(t, op))
+                .collect::<Result<Vec<_>, _>>()?;
+            let [buffer, index] = &texts[..] else {
+                unreachable!("`get` takes the buffer and an index")
+            };
+            return (t.buffer_get(ret, buffer, index)).map_err(|no| {
+                let what = msg![code("get(…)"), " gives a ", t.ty_part(ret)];
+                self.no_gpu(no, Some(what))
+            });
+        }
         let on_gpu = |t: &mut Translator, ty: TypeId| -> Result<(), NoGpu> {
             let ty = match t.mir.types.get(ty) {
                 Ty::Ref { to, .. } => *to,

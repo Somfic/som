@@ -19,12 +19,14 @@
 //! calling itself) is an error, said where the shader reaches it and through which calls.
 
 mod body;
+mod compute;
 mod entry;
 mod error;
 mod names;
 mod structure;
 mod types;
 
+pub use compute::WORKGROUP;
 pub use error::ShaderError;
 
 use error::Problem;
@@ -104,6 +106,8 @@ fn translate(mir: &Mir, entry: FuncId, target: Target) -> Result<String, Vec<Sha
         entry,
         target,
         textures: HashMap::new(),
+        loads: HashMap::new(),
+        bindings: 0,
         structs: Vec::new(),
         struct_names: HashMap::new(),
         func_names: HashMap::new(),
@@ -146,6 +150,10 @@ pub(crate) struct Translator<'a> {
     /// In WGSL, each texture among the uniforms, by its path as GLSL names its uniform
     /// (`camera.sky`): the global it's bound to.
     pub textures: HashMap<String, String>,
+    /// In WGSL, the function reading each storage buffer's items, by the buffer's global.
+    loads: HashMap<String, String>,
+    /// In WGSL, how many textures and buffers are bound after the sampler.
+    bindings: usize,
     /// GLSL struct declarations, each after those it's made of.
     pub structs: Vec<String>,
     pub struct_names: HashMap<TypeId, String>,
@@ -215,6 +223,7 @@ impl Translator<'_> {
                 return String::new();
             }
             Some(Stage::Fragment) => self.fragment(),
+            Some(Stage::Compute) => self.compute(),
         };
         // What's inside can't be said to be wrong for a shader that's wrong outside.
         if !self.errors.is_empty() {

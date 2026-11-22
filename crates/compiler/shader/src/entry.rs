@@ -38,8 +38,8 @@ struct Wgsl {
     /// `SomUniforms`' members.
     members: Vec<String>,
     member_names: std::collections::HashSet<String>,
-    /// Each texture's global, in order.
-    textures: Vec<String>,
+    /// Each texture and storage buffer, declared, in order.
+    bound: Vec<String>,
 }
 
 impl Wgsl {
@@ -142,106 +142,10 @@ impl Translator<'_> {
             });
         }
 
-        let mut globals = String::from(
-            "in vec2 fragTexCoord;\nin vec4 fragColor;\nout vec4 finalColor;\n",
-        );
-        let mut uniform_args = Vec::new();
         self.uniforms = uniforms;
-        if let Some(ty) = uniforms {
-            let Ty::Struct(def, args) = self.mir.types.get(ty).clone() else {
-                unreachable!("uniforms are a struct")
-            };
-            let fields = self.mir.struct_def(def, &args).fields.clone();
-            // A closure's captures are its uniforms.
-            let closure = self.mir.struct_def(def, &args).name == "closure";
-            let struct_name = self.display(ty);
-            self.uniform_paths.insert(ty, Some(String::new()));
-            for (name, member_ty) in &fields {
-                self.note_uniform_paths(*member_ty, format!("{name}."), 0);
-            }
-            for (name, member_ty) in &fields {
-                let member_ty = *member_ty;
-                if self.is_unit(member_ty) {
-                    continue;
-                }
-                let what = || match closure {
-                    true => msg!["it captures ", code(name)],
-                    false => msg!["its uniforms include ", field(format!("{struct_name}.{name}"))],
-                };
-                if ident(name) != *name || is_reserved(name) {
-                    return Err(problem(
-                        msg!["a uniform can't be named ", code(name)],
-                        what(),
-                        Some(match closure {
-                            true => "GLSL has the name; rename the variable".into(),
-                            false => "GLSL has the name; rename the field".into(),
-                        }),
-                    ));
-                }
-                // Captured without copying: a reference, which the GPU can't be given.
-                if let Ty::Ref { to, .. } = *self.mir.types.get(member_ty) {
-                    let index = fields.iter().position(|(n, _)| n == name).expect("its own field");
-                    let read = self.copies_read(index, name, to);
-                    let hint = match &read[..] {
-                        [] => msg![
-                            "a shader closure's captures are its uniforms: capture copies of what it uses, ",
-                            code(format!("let x = {name}.x;")),
-                            " before the closure"
-                        ],
-                        paths => {
-                            let lets: Vec<String> = (paths.iter())
-                                .map(|p| format!("let {} = {p};", p.rsplit('.').next().unwrap_or(p)))
-                                .collect();
-                            msg![
-                                "a shader closure's captures are its uniforms, and it reads ",
-                                code(paths.join(", ")),
-                                ": capture copies of those, ",
-                                code(lets.join(" ")),
-                                " before the closure, and use them in it"
-                            ]
-                        }
-                    };
-                    return Err(problem(
-                        msg!["a shader can't capture ", code(name), ", a ", self.ty_part(to), ", which doesn't copy"],
-                        what(),
-                        Some(hint),
-                    ));
-                }
-                // WGSL's are all declared below, in one buffer.
-                if self.wgsl() {
-                    if !self.is_lang(member_ty, LangStruct::Texture) && !self.uniform_fits(member_ty, 0) {
-                        return Err(self.unfit(&span, what(), member_ty));
-                    }
-                    continue;
-                }
-                // A texture is a uniform of its own, used where it's named.
-                if self.is_lang(member_ty, LangStruct::Texture) {
-                    globals.push_str(&format!("uniform sampler2D {name};\n"));
-                    continue;
-                }
-                // What `som::gpu::Uniform` can hold, for the host to set; or a struct of
-                // those, set by each of its fields.
-                if !self.uniform_fits(member_ty, 0) {
-                    return Err(self.unfit(&span, what(), member_ty));
-                }
-                // A struct holding a texture is declared with it, then made without it.
-                if self.holds_texture(member_ty, 0) {
-                    let declared = self.uniform_struct(member_ty).map_err(|no| no.at(&span, what()))?;
-                    globals.push_str(&format!("uniform {declared} {name};\n"));
-                    let made = self.from_uniform(name, member_ty).map_err(|no| no.at(&span, what()))?;
-                    uniform_args.push(made);
-                    continue;
-                }
-                let native = self.ty(member_ty).map_err(|no| no.at(&span, what()))?;
-                globals.push_str(&format!("uniform {native} {name};\n"));
-                uniform_args.push(self.from_native(name, member_ty));
-            }
-        }
-
-        if self.wgsl() {
-            let (more, made) = self.wgsl_uniforms(uniforms).map_err(|no| no.at(&span, "its uniforms".into()))?;
-            globals = more;
-            uniform_args = made;
+        let (mut globals, uniform_args) = self.uniform_fields(uniforms, &span)?;
+        if !self.wgsl() {
+            globals.insert_str(0, "in vec2 fragTexCoord;\nin vec4 fragColor;\nout vec4 finalColor;\n");
         }
 
         let mut args = Vec::new();
@@ -297,6 +201,131 @@ impl Translator<'_> {
         Ok(Main { globals, main })
     }
 
+    /// The globals declaring uniforms `ty`, and each of its members made from them, checking
+    /// each can be one.
+    pub(crate) fn uniform_fields(&mut self, uniforms: Option<TypeId>, span: &som_base::Span) -> Result<(String, Vec<String>), Problem> {
+        let problem = |message: Message, label: Message, hint: Option<Message>| Problem {
+            message,
+            span: span.clone(),
+            label,
+            hint,
+        };
+        let mut globals = String::new();
+        let mut uniform_args = Vec::new();
+        if let Some(ty) = uniforms {
+            let Ty::Struct(def, args) = self.mir.types.get(ty).clone() else {
+                unreachable!("uniforms are a struct")
+            };
+            let fields = self.mir.struct_def(def, &args).fields.clone();
+            // A closure's captures are its uniforms.
+            let closure = self.mir.struct_def(def, &args).name == "closure";
+            let struct_name = self.display(ty);
+            self.uniform_paths.insert(ty, Some(String::new()));
+            for (name, member_ty) in &fields {
+                self.note_uniform_paths(*member_ty, format!("{name}."), 0);
+            }
+            for (name, member_ty) in &fields {
+                let member_ty = *member_ty;
+                if self.is_unit(member_ty) {
+                    continue;
+                }
+                let what = || match closure {
+                    true => msg!["it captures ", code(name)],
+                    false => msg!["its uniforms include ", field(format!("{struct_name}.{name}"))],
+                };
+                // A capture GLSL has the name of is already renamed, `input_`.
+                let plain = name.trim_end_matches('_');
+                if ident(plain) != plain || is_reserved(name) {
+                    return Err(problem(
+                        msg!["a uniform can't be named ", code(name)],
+                        what(),
+                        Some(match closure {
+                            true => "GLSL has the name; rename the variable".into(),
+                            false => "GLSL has the name; rename the field".into(),
+                        }),
+                    ));
+                }
+                // Captured without copying: a reference, which the GPU can't be given.
+                if let Ty::Ref { to, .. } = *self.mir.types.get(member_ty) {
+                    let index = fields.iter().position(|(n, _)| n == name).expect("its own field");
+                    let read = self.copies_read(index, name, to);
+                    let hint = match &read[..] {
+                        [] => msg![
+                            "a shader closure's captures are its uniforms: capture copies of what it uses, ",
+                            code(format!("let x = {name}.x;")),
+                            " before the closure"
+                        ],
+                        paths => {
+                            let lets: Vec<String> = (paths.iter())
+                                .map(|p| format!("let {} = {p};", p.rsplit('.').next().unwrap_or(p)))
+                                .collect();
+                            msg![
+                                "a shader closure's captures are its uniforms, and it reads ",
+                                code(paths.join(", ")),
+                                ": capture copies of those, ",
+                                code(lets.join(" ")),
+                                " before the closure, and use them in it"
+                            ]
+                        }
+                    };
+                    return Err(problem(
+                        msg!["a shader can't capture ", code(name), ", a ", self.ty_part(to), ", which doesn't copy"],
+                        what(),
+                        Some(hint),
+                    ));
+                }
+                // WGSL's are all declared below, in one buffer.
+                if self.wgsl() {
+                    if !self.is_handle(member_ty) && !self.uniform_fits(member_ty, 0) {
+                        return Err(self.unfit(span, what(), member_ty));
+                    }
+                    continue;
+                }
+                if self.is_lang(member_ty, LangStruct::Buffer) {
+                    return Err(problem(
+                        msg!["a ", code("gpu::Buffer"), " is WebGPU's"],
+                        what(),
+                        Some(msg!["OpenGL 3.3 has no storage buffers: draw with ", code("gpu::wgsl")]),
+                    ));
+                }
+                // A texture is a uniform of its own, used where it's named.
+                if self.is_lang(member_ty, LangStruct::Texture) {
+                    globals.push_str(&format!("uniform sampler2D {name};\n"));
+                    continue;
+                }
+                // What `som::gpu::Uniform` can hold, for the host to set; or a struct of
+                // those, set by each of its fields.
+                if !self.uniform_fits(member_ty, 0) {
+                    return Err(self.unfit(span, what(), member_ty));
+                }
+                // A struct holding a texture is declared with it, then made without it.
+                if self.holds_texture(member_ty, 0) {
+                    let declared = self.uniform_struct(member_ty).map_err(|no| no.at(span, what()))?;
+                    globals.push_str(&format!("uniform {declared} {name};\n"));
+                    let made = self.from_uniform(name, member_ty).map_err(|no| no.at(span, what()))?;
+                    uniform_args.push(made);
+                    continue;
+                }
+                let native = self.ty(member_ty).map_err(|no| no.at(span, what()))?;
+                globals.push_str(&format!("uniform {native} {name};\n"));
+                uniform_args.push(self.from_native(name, member_ty));
+            }
+        }
+
+        if self.wgsl() {
+            let (more, made) = self.wgsl_uniforms(uniforms).map_err(|no| no.at(span, "its uniforms".into()))?;
+            globals = more;
+            uniform_args = made;
+        }
+        Ok((globals, uniform_args))
+
+    }
+
+    /// What's bound apart from the uniform buffer: a texture or a storage buffer.
+    pub(crate) fn is_handle(&self, ty: TypeId) -> bool {
+        self.is_lang(ty, LangStruct::Texture) || self.is_lang(ty, LangStruct::Buffer)
+    }
+
     /// The error for uniform `what`, of type `ty`, which the host can't set.
     fn unfit(&self, span: &som_base::Span, what: Message, ty: TypeId) -> Problem {
         Problem {
@@ -349,12 +378,13 @@ impl Translator<'_> {
             globals.push_str(&self.struct_text("SomUniforms", &w.members));
             globals.push_str("@group(0) @binding(0) var<uniform> som_u: SomUniforms;\n");
         }
-        if !w.textures.is_empty() {
+        if !w.bound.is_empty() {
             globals.push_str(&format!("@group(0) @binding(1) var {}: sampler;\n", crate::body::SAMPLER));
         }
-        for (i, name) in w.textures.iter().enumerate() {
-            globals.push_str(&format!("@group(0) @binding({}) var {name}: texture_2d<f32>;\n", i + 2));
+        for (i, declared) in w.bound.iter().enumerate() {
+            globals.push_str(&format!("@group(0) @binding({}) {declared};\n", i + 2));
         }
+        self.bindings = w.bound.len();
         Ok((globals, made))
     }
 
@@ -364,7 +394,14 @@ impl Translator<'_> {
         if self.is_lang(ty, LangStruct::Texture) {
             let name = self.unique(format!("tex_{}", ident(path)));
             self.textures.insert(path.to_string(), name.clone());
-            w.textures.push(name);
+            w.bound.push(format!("var {name}: texture_2d<f32>"));
+            return Ok(None);
+        }
+        // A storage buffer: used through a pointer to it.
+        if self.is_lang(ty, LangStruct::Buffer) {
+            let name = self.unique(format!("buf_{}", ident(path)));
+            self.textures.insert(path.to_string(), name.clone());
+            w.bound.push(format!("var<storage, read> {name}: array<u32>"));
             return Ok(None);
         }
         // A struct of the program's own: field by field, as `each_uniform` goes into it.
@@ -591,7 +628,7 @@ impl Translator<'_> {
             return matches!(scalar, Scalar::Float | Scalar::Int);
         }
         // Below the top, where it's a uniform of its own.
-        if self.is_lang(ty, LangStruct::Texture) {
+        if self.is_handle(ty) {
             return depth > 0;
         }
         match self.mir.types.get(ty).clone() {

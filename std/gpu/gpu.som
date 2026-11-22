@@ -30,6 +30,16 @@ pub fn wgsl<F>(entry: F) -> string {
     @fail("`wgsl` takes a shader by its name, `wgsl(wobble)`, or a closure written as one")
 }
 
+/// The source of compute kernel `entry` in WGSL, as `wgsl` gives a shader's: `cs_main`, run
+/// once for each item of the buffer it fills (binding after every other), giving it. `entry`
+/// is a closure, `(i) => …`, or a function marked `@compute`, given the item's index. Its
+/// uniforms are as a shader's; a `Buffer` among them is read with `get`. Each group of
+/// threads is 64: dispatch the buffer's length divided by 64, rounded up.
+pub fn kernel<F>(entry: F) -> string {
+    // The compiler gives each use the kernel's source instead.
+    @fail("`kernel` takes a kernel by its name, `kernel(step)`, or a closure written as one")
+}
+
 /// Calls `set` with each of `uniforms`' uniforms, in order: its index, its name as the GPU has
 /// it, and its value. `uniforms` is a shader's struct of uniforms (each field, going into
 /// those that are structs of the program's own, `camera.pos`), or a shader written as a
@@ -68,6 +78,34 @@ impl<U> Shader<U> {
     }
 }
 
+/// `len` `T`s on the GPU, in a storage buffer: what a compute kernel fills, and what a
+/// kernel or shader that captures it reads, with `get`. Its items are laid out as on the CPU,
+/// so the host copies an array of `T`s in and out as it is; they're made of 4-byte numbers
+/// (`f32`, `i32`, `u32`, and vectors, arrays and structs of them). Which buffer it is, `id`,
+/// is the graphics library's.
+pub struct Buffer<T> {
+    pub id: u32,
+    pub len: usize,
+}
+
+impl<T> Copy for Buffer<T> {}
+
+impl<T> Buffer<T> {
+    /// Item `i`. Only on the GPU, where the items are: the host reads them back.
+    pub fn get(&self, i: usize) -> T {
+        // On the GPU the compiler reads the item instead: this is never run there.
+        @if GPU {
+            return som::mem::zeroed();
+        } else {
+            @fail("a buffer is only read on the GPU");
+        }
+    }
+}
+
+impl<T> From<&Buffer<T>> for Uniform {
+    fn from(value: &Buffer<T>) -> Uniform = Uniform::Buffer(value.id);
+}
+
 /// An image on the GPU, for a shader to sample: a uniform, set like any other. Which one it
 /// is, `id`, is the graphics library's.
 pub struct Texture {
@@ -101,6 +139,8 @@ pub enum Uniform {
     Texture(Texture),
     /// An array of numbers or vectors, `[f32; 16]` or `[Vec4; 8]`, or a vector of `i32`s.
     Numbers(Numbers),
+    /// A `Buffer`, by its `id`: bound as a texture is, on WebGPU.
+    Buffer(u32),
 }
 
 /// `count` lots of `size` numbers, one after another from `data`: `f32`s, or `i32`s if

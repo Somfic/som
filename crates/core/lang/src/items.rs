@@ -124,6 +124,9 @@ named_enum! {
         Texture = "Texture",
         /// A uniform's value, as `gpu::each_uniform` gives it to the host.
         Uniform = "Uniform",
+        /// Items on the GPU, in a storage buffer: what a compute kernel fills, and a shader
+        /// can read.
+        Buffer = "Buffer",
     }
 }
 
@@ -143,6 +146,10 @@ named_enum! {
         /// `gpu::each_uniform(&u, set)`: written by the compiler for each type of uniforms,
         /// a struct or a shader closure.
         EachUniform = "each_uniform",
+        /// `mem::size_of<T>()`: how many bytes a `T` takes, as C lays it out.
+        SizeOf = "size_of",
+        /// `gpu::kernel(f)`: a compute kernel's source in WGSL, made while compiling.
+        Kernel = "kernel",
     }
 }
 

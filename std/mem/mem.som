@@ -17,4 +17,10 @@ pub fn zeroed<T>() -> T {
 
 fn untouched<T>(value: &mut T) {}
 
+/// How many bytes a `T` takes, as C lays it out: what a C library copying `T`s is told.
+pub fn size_of<T>() -> usize {
+    // The compiler gives each use the size instead.
+    0
+}
+
 pub fn forget<T>(value: T) {}

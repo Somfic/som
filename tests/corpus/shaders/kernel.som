@@ -1,0 +1,40 @@
+// expect: exit 0
+
+/// A compute kernel written as a closure: it gives the item at index `i` of the buffer it
+/// fills, reading another buffer and a struct it captures. `gpu::kernel` compiles it to WGSL;
+/// on the CPU it's the closure it is.
+use som::gpu;
+
+struct Particle { pub pos: Vec2, pub vel: Vec2, pub age: f32 }
+
+impl Copy for Particle {}
+
+struct World { pub gravity: Vec2, pub dt: f32 }
+
+impl Copy for World {}
+
+fn moved(p: Particle, world: &World) -> Particle {
+    let vel = p.vel + world.gravity * world.dt;
+    Particle { pos: p.pos + vel * world.dt, vel, age: p.age + world.dt }
+}
+
+fn main() -> i32 {
+    let world = World { gravity: vec2(0.0, -9.8), dt: 0.5 };
+    let particles: gpu::Buffer<Particle> = gpu::Buffer { id: 1, len: 64 };
+    let step = (i: usize) => moved(particles.get(i), &world);
+    let source = gpu::kernel(&step);
+    if source.len == 0 { return 1; }
+
+    // The same, on the CPU.
+    let p = moved(Particle { pos: vec2(0.0, 0.0), vel: vec2(1.0, 0.0), age: 0.0 }, &world);
+    if p.vel.y != -4.9 || p.age != 0.5 { return 2; }
+
+    // Numbers, worked out from the index alone, and a `@compute` function.
+    let squares = (i: usize) => (i * i) as u32;
+    if gpu::kernel(&squares).len == 0 { return 3; }
+    if gpu::kernel(doubled).len == 0 { return 4; }
+    0
+}
+
+@compute
+fn doubled(i: usize) -> [i32; 4] = [i as i32, 2 * i as i32, 0, 1];

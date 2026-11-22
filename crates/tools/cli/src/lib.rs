@@ -451,7 +451,12 @@ fn write_shaders(emit: &Emit, output: &Path, shaders: &[som_driver::Shader]) -> 
         (true, _) => "wgsl",
         (false, som_lang::Stage::Fragment) => "frag",
         (false, som_lang::Stage::Vertex) => "vert",
+        (false, som_lang::Stage::Compute) => "comp",
     };
+    // A kernel has no GLSL.
+    let shaders: Vec<&som_driver::Shader> = (shaders.iter())
+        .filter(|s| wgsl || s.stage != som_lang::Stage::Compute)
+        .collect();
     // A shader WGSL can't have: its problems are said where `gpu::wgsl` asks for it.
     let source = |shader: &som_driver::Shader| match wgsl {
         true => shader.wgsl.clone().unwrap_or_else(|| "// not in WGSL yet\n".into()),

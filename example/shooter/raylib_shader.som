@@ -109,6 +109,8 @@ fn set_uniform(shader: raylib::Shader, at: i32, value: gpu::Uniform) {
             let kind = if n.ints { 4 + n.size - 1 } else { n.size - 1 };
             set_shader_value_v(shader, at, n.data, kind, n.count);
         }
+        // WebGPU's: OpenGL 3.3 has no storage buffers, and the shader can't take one.
+        gpu::Uniform::Buffer(_) => {}
     }
 }
 

@@ -160,6 +160,7 @@ impl Passes<'_> {
         let mut wgsl_sources = std::collections::HashMap::new();
         let mut errors = Vec::new();
         let wanted: std::collections::HashSet<_> = mir.wgsl.values().flatten().copied().collect();
+        let wanted_glsl: std::collections::HashSet<_> = mir.glsl.values().flatten().copied().collect();
         for (entry, stage) in entries {
             let wgsl = match som_shader::wgsl(mir, entry) {
                 Ok(wgsl) => {
@@ -167,13 +168,25 @@ impl Passes<'_> {
                     Some(wgsl)
                 }
                 Err(found) => {
-                    // Said once, if the GLSL can be made: the same problems, likely.
-                    if wanted.contains(&entry) && som_shader::glsl(mir, entry).is_ok() {
+                    // Said once, if the GLSL can be made: the same problems, likely. A kernel
+                    // has no GLSL.
+                    let compute = stage == som_lang::Stage::Compute;
+                    let only_wgsl = !wanted_glsl.contains(&entry);
+                    if compute || (wanted.contains(&entry) && (only_wgsl || som_shader::glsl(mir, entry).is_ok())) {
                         errors.extend(found.into_iter().map(Error::Shader));
                     }
                     None
                 }
             };
+            if stage == som_lang::Stage::Compute {
+                shaders.push(crate::Shader {
+                    name: som_shader::short_fn(&mir.funcs[entry].name),
+                    stage,
+                    glsl: String::new(),
+                    wgsl,
+                });
+                continue;
+            }
             match som_shader::glsl(mir, entry) {
                 Ok(glsl) => {
                     sources.insert(entry, glsl.clone());
@@ -182,6 +195,15 @@ impl Passes<'_> {
                         stage,
                         glsl,
                         wgsl,
+                    });
+                }
+                // One only WGSL is asked for can use what only WebGPU has, a buffer.
+                Err(_) if wanted.contains(&entry) && !wanted_glsl.contains(&entry) => {
+                    shaders.push(crate::Shader {
+                        name: som_shader::short_fn(&mir.funcs[entry].name),
+                        stage,
+                        glsl: String::new(),
+                        wgsl: wgsl_sources.get(&entry).cloned(),
                     });
                 }
                 Err(found) => errors.extend(found.into_iter().map(Error::Shader)),

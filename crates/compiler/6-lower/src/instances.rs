@@ -194,9 +194,15 @@ impl<'a> Lowerer<'a> {
         if *self.ast.modules[self.names.def(def).module].name == *som_lang::GL_MODULE {
             self.mir.gpu.insert(id);
         }
+        if self.names.lang_func(som_lang::LangFunc::SizeOf) == Some(def)
+            && let Some(&ty) = type_args.first()
+        {
+            self.mir.size_of.insert(id, ty);
+        }
         let glsl = self.names.lang_func(som_lang::LangFunc::Glsl) == Some(def);
         let wgsl = self.names.lang_func(som_lang::LangFunc::Wgsl) == Some(def);
-        if glsl || wgsl {
+        let kernel = self.names.lang_func(som_lang::LangFunc::Kernel) == Some(def);
+        if glsl || wgsl || kernel {
             // The shader as it's compiled for the GPU: its `@if GPU`s take the GPU's branch.
             // A closure, or a `&` to one: its body, a fragment shader taking its captures.
             let mut given = type_args.first().copied();
@@ -220,7 +226,11 @@ impl<'a> Lowerer<'a> {
                     let entry = self.closure_instance(closure);
                     self.set_gpu(outer);
                     if let Some(entry) = entry {
-                        self.mir.stages.entry(entry).or_insert(som_lang::Stage::Fragment);
+                        let stage = match kernel {
+                            true => som_lang::Stage::Compute,
+                            false => som_lang::Stage::Fragment,
+                        };
+                        self.mir.stages.entry(entry).or_insert(stage);
                     }
                     entry
                 }
@@ -228,6 +238,7 @@ impl<'a> Lowerer<'a> {
             };
             match glsl {
                 true => self.mir.glsl.insert(id, entry),
+                // A kernel is WGSL too: its entry's stage says it's a compute shader.
                 false => self.mir.wgsl.insert(id, entry),
             };
         }

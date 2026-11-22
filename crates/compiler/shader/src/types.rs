@@ -129,6 +129,24 @@ impl Translator<'_> {
                 false => "sampler2D".into(),
             });
         }
+        if self.is_lang(ty, LangStruct::Buffer) {
+            return Err(match self.wgsl() {
+                // WGSL can't pass a pointer to a buffer to a function (naga doesn't take
+                // `unrestricted_pointer_parameters` yet): each buffer is read where it's named.
+                true => NoGpu::new(
+                    msg![code("gpu::Buffer"), "s passed around"],
+                    Some(msg![
+                        "read a buffer's items where it's captured, ",
+                        code("cells.get(i)"),
+                        ", and pass those"
+                    ]),
+                ),
+                false => NoGpu::new(
+                    msg![code("gpu::Buffer"), "s"],
+                    Some("OpenGL 3.3 has no storage buffers: they're WebGPU's".into()),
+                ),
+            });
+        }
         match self.mir.types.get(ty).clone() {
             Ty::Unit => Ok("void".into()),
             Ty::Struct(..) | Ty::Optional(_) | Ty::Range(_) => self.struct_ty(ty),
@@ -194,7 +212,7 @@ impl Translator<'_> {
         Ok(fields
             .into_iter()
             .enumerate()
-            .filter(|(_, (_, t))| !(textures_apart && self.is_lang(*t, LangStruct::Texture)))
+            .filter(|(_, (_, t))| !(textures_apart && self.is_handle(*t)))
             .filter(|(_, (_, t))| !self.is_unit(*t))
             .map(|(i, (name, t))| (member(&name), t, i))
             .collect())
@@ -224,9 +242,9 @@ impl Translator<'_> {
         }
         let mut lines = Vec::new();
         for (name, member_ty, _) in self.members(ty)? {
-            if self.is_lang(member_ty, LangStruct::Texture) {
+            if self.is_handle(member_ty) {
                 return Err(NoGpu::new(
-                    msg!["a ", code("Texture"), " inside a struct"],
+                    msg!["a ", code(self.display(member_ty)), " inside a struct"],
                     Some(msg![
                         "a texture is a field of the shader's uniforms, and passed to functions as a ",
                         code("&Texture")

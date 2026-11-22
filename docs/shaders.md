@@ -2,8 +2,8 @@
 
 *Status (2026-11-22): `@fragment` shaders, and closures written as shaders, compile to GLSL
 3.30 and run through raylib (`example/main.som`, `example/shader`, `example/shooter`), and to
-WGSL and run through WebGPU (wgpu-native, `example/wgpu`). `@vertex` is parsed but not
-compiled yet.*
+WGSL and run through WebGPU (wgpu-native, `example/wgpu`), as do compute kernels. `@vertex`
+is parsed but not compiled yet.*
 
 A shader is ordinary som code that runs on the GPU for each pixel: a closure that takes a
 `Fragment`, written where it's drawn, or a function marked `@fragment`. It's compiled for
@@ -103,6 +103,39 @@ while gpu.frame() {
 
 `tests/tests/wgsl.rs` checks every compiling shader in `tests/corpus/shaders` with naga, wgpu's
 own shader compiler. `SOM_WGSL_EXTRA=example/shooter` checks one more program's.
+
+## Compute kernels
+
+A kernel is a closure given an index, `(i) => …`, run on the GPU once for each item of the
+buffer it fills, giving that item. What it captures are its uniforms, as a shader's are, and
+a `gpu::Buffer<T>` among them is read with `get`:
+
+```som
+let input = gpu.upload(&numbers);                 // a gpu::Buffer<f32>
+let output: gpu::Buffer<f32> = gpu.buffer(1000);
+let mut double = Kernel::empty();
+double.fill(&mut gpu, &output, (i) => input.get(i) * 2.0 + 1.0);
+gpu.read(&output, &mut back);
+```
+
+`gpu::kernel(f)` is its WGSL: `cs_main`, 64 threads to a group, storing what the closure gives
+at `i` for each `i` below the buffer's length (or a function marked `@compute`, taking the
+index and a `&` to a struct of uniforms). A shader can capture a buffer too: `example/wgpu`
+steps the Game of Life with a kernel and draws it with a shader, both reading the same buffer,
+which never leaves the GPU.
+
+A buffer's items are laid out as the CPU has them, so the host copies an array of them in and
+out as it is. In WGSL a buffer is an `array<u32>`, and each item is read and written word by
+word by a function made for it (`som_load_buf_cells`, `som_store_Particle`), converting with
+`bitcast`. So an item is made of 4-byte numbers: `f32`, `i32`, `u32`, and vectors, arrays and
+structs of them, which C lays out with no gaps. (Not `bool`, `usize` or enums.)
+
+WGSL can't pass a pointer to a buffer to a function yet (naga doesn't take
+`unrestricted_pointer_parameters`), so a buffer is read where it's captured, and its items
+passed on.
+
+`mem::size_of<T>()`, which the host needs to make a buffer, is the size the compile-time pass
+lays `T` out at: as C does.
 
 ## Seeing the GLSL
 

@@ -41,7 +41,58 @@ pub fn evaluate(mir: &Mir, inits: &[FuncId]) -> (Vec<Option<ConstKind>>, Vec<Com
 
 /// Works out every initializer the program uses, and puts their values in its place. If
 /// one can't be worked out, says why, and leaves the program as it was.
+/// Each `mem::size_of<T>()` gives `T`'s size, as C lays it out.
+fn sizes(mir: &mut Mir) {
+    let measured: Vec<(FuncId, usize)> = (mir.size_of.iter())
+        .filter_map(|(&f, &ty)| Some((f, memory::layout(mir, ty)?.size)))
+        .collect();
+    for (func, size) in measured {
+        let span = mir.funcs[func].span.clone();
+        let usize = mir.types.usize;
+        let mut locals = Arena::new();
+        locals.alloc(LocalDecl {
+            ty: usize,
+            name: None,
+            mutable: false,
+            span: span.clone(),
+        });
+        let params = mir.funcs[func].params.clone();
+        for &ty in &params {
+            locals.alloc(LocalDecl {
+                ty,
+                name: None,
+                mutable: false,
+                span: span.clone(),
+            });
+        }
+        let value = Const {
+            kind: ConstKind::Int(size as i128),
+            ty: usize,
+        };
+        let mut blocks = Arena::new();
+        blocks.alloc(Block {
+            stmts: vec![Statement {
+                kind: StatementKind::Assign(Place::local(RETURN), Rvalue::Use(Operand::Const(value))),
+                span: span.clone(),
+                reads: Vec::new(),
+            }],
+            terminator: Terminator {
+                kind: TerminatorKind::Return,
+                span,
+            },
+        });
+        mir.funcs[func].body = Some(Body {
+            locals,
+            arg_count: params.len(),
+            outs: Vec::new(),
+            two_phase: Vec::new(),
+            blocks,
+        });
+    }
+}
+
 pub fn run(mir: &mut Mir) -> Vec<ComptimeError> {
+    sizes(mir);
     // `@const assert(…);`, each run for what it checks; then each constant something uses.
     let mut wanted = mir.checks.clone();
     for func in mir.funcs.iter() {

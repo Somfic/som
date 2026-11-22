@@ -1,0 +1,13 @@
+// expect: error Shader
+
+/// WGSL can't pass a buffer to a function: it's read where it's captured, and its items
+/// passed instead.
+use som::gpu;
+
+fn first(cells: &gpu::Buffer<i32>) -> i32 = cells.get(0);
+
+fn main() {
+    let cells: gpu::Buffer<i32> = gpu::Buffer { id: 1, len: 4 };
+    let step = (i: usize) => first(&cells) + i as i32;
+    let source = gpu::kernel(&step);
+}

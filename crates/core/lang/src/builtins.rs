@@ -12,6 +12,7 @@ named_enum! {
         Where = "@where",
         Vertex = "@vertex",
         Fragment = "@fragment",
+        Compute = "@compute",
         Name = "@name",
         Leaves = "@leaves",
     }
@@ -65,6 +66,11 @@ impl Builtin {
                  what's drawn, giving its colour. It takes a `Fragment`, and may take a `&` to a \
                  struct of uniforms; its source for the GPU is `@glsl(name)`."
             }
+            Builtin::Compute => {
+                "On a line above a function: a compute kernel, run on the GPU once for each item \
+                 of the buffer it fills, giving that item. It takes the item's index, a `usize`, \
+                 and may take a `&` to a struct of uniforms; its source is `gpu::kernel(name)`."
+            }
             Builtin::Name => {
                 "In `@for f in T { … }`: the name of field `f` (or of variant `v`, going through \
                  an enum) as text, `\"x\"`. `print(\"{@name(f)} = {p.f}\")` shows each field."
@@ -84,6 +90,7 @@ named_enum! {
     pub enum Stage {
         Vertex = "@vertex",
         Fragment = "@fragment",
+        Compute = "@compute",
     }
 }
 
@@ -92,6 +99,7 @@ impl Stage {
         match self {
             Stage::Vertex => Builtin::Vertex,
             Stage::Fragment => Builtin::Fragment,
+            Stage::Compute => Builtin::Compute,
         }
     }
 }

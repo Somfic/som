@@ -24,7 +24,8 @@ fn shaders_are_valid_glsl() {
         }
         let program = som_driver::check(&path, &Default::default())
             .unwrap_or_else(|_| panic!("{} doesn't compile", path.display()));
-        for shader in &program.shaders {
+        // A compute kernel has no GLSL.
+        for shader in program.shaders.iter().filter(|s| !s.glsl.is_empty()) {
             let file = dir.path().join(format!("{}.frag", shader.name));
             std::fs::write(&file, &shader.glsl).unwrap();
             let out = Command::new("glslc")

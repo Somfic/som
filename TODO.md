@@ -135,7 +135,10 @@ needed by the `@gpu` work too.
 - [ ] `glsl` called without `@` fails at run time; make it a compile error.
 - [ ] Generated names are long (`som_data_Vector_4_f32`); shorten where unambiguous.
 - [x] WGSL emitter (`gpu::wgsl`, `--emit wgsl`, checked by naga) and a wgpu-native + SDL3 host in `example/wgpu` (2026-11-22).
-- [ ] Compute kernels (`@compute`) on WebGPU, see the Parallelism section.
+- [x] Compute kernels (`gpu::kernel`, `@compute`, `gpu::Buffer<T>` read with `get`, `mem::size_of<T>()`), and a `Kernel` in `example/wgpu` running the Game of Life (2026-11-22).
+- [ ] Pass a `gpu::Buffer` to a function on the GPU: specialise the function per buffer, until naga takes `unrestricted_pointer_parameters`.
+- [ ] Kernels writing more than their own item (scatter, atomics), or more than one buffer; 2D dispatch for images.
+- [ ] A `gpu::Buffer` on the CPU (holding its items), so kernels using `get` can be tested there.
 - [ ] The wgpu host as a library of its own (and raylib's adapter likewise), not copied into examples.
 - [ ] The shooter on wgpu: its input and HUD are raylib's; needs keyboard/mouse from SDL and text.
 - [ ] Imported C enums whose variants start with a digit keep their whole name (`WGPUTextureDimension::WGPUTextureDimension2D`).

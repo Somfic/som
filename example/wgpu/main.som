@@ -1,44 +1,88 @@
 use som::gpu;
 
-// Shaders written where they're drawn, on WebGPU: each closure runs on the GPU for each
-// pixel, compiled to WGSL, and what it captures is its uniforms. `example/main.som` draws
-// the first the same way with raylib and GLSL.
+// som on WebGPU: shaders and compute kernels written as closures where they're used, each
+// compiled to WGSL; what a closure captures is its uniforms, a buffer among them read with
+// `get`. The Game of Life here is stepped by a kernel and drawn by a shader, both reading the
+// same buffer, which never leaves the GPU.
+
+@const W: usize = 160;
+@const H: usize = 90;
 
 fn main() {
-    let mut gpu = Gpu::open("wgpu", 800, 450);
-    let mut grid = gpu::Grid::of(4, 4, &[
-        1, 0, 0, 2,
-        0, 3, 0, 0,
-        0, 0, 3, 0,
-        2, 0, 0, 1,
-    ]);
-    gpu.load_grid(&mut grid);
-    let mut background = WgpuShader::empty();
-    let mut tiles = WgpuShader::empty();
-    while gpu.frame() {
-        let time = gpu.time();
-        background.fullscreen(&mut gpu, (frag) => {
-            let t = 0.5 + 0.5 * time.sin();
-            vec4(frag.uv.x, t, 1.0 - t, 1.0)
-        });
+    let mut gpu = Gpu::open("wgpu", 960, 540);
+    checked(&mut gpu);
 
-        // A texture and an array among the captures: the grid's cells, each kind its colour.
-        let map = grid.texture;
-        let colours = [vec4(0.1, 0.1, 0.1, 1.0), vec4(0.9, 0.3, 0.2, 1.0), vec4(0.2, 0.8, 0.3, 1.0), vec4(0.95, 0.9, 0.3, 1.0)];
-        let pulse = 0.75 + 0.25 * (time * 3.0).sin();
-        let side = gpu.height as f32 / 2.0;
-        tiles.draw(&mut gpu, 24.0, 24.0, side, side, (frag) => {
-            let x = (frag.uv.x * 4.0) as i32;
-            let y = (frag.uv.y * 4.0) as i32;
-            let kind = map.cell(x, y);
-            let mut colour = colours[0];
-            for i in 0..4 {
-                if i == kind {
-                    colour = colours[i];
+    // Two boards: each step reads one and fills the other.
+    let mut cells: [i32; W * H] = [0; W * H];
+    let mut seed: u32 = 12345;
+    for i in 0..cells.len {
+        seed = seed * 1103515245 + 12345;
+        cells[i] = if (seed >> 16) % 4 == 0 { 1 } else { 0 };
+    }
+    let mut now = gpu.upload(&cells);
+    let mut next: gpu::Buffer<i32> = gpu.buffer(W * H);
+
+    let mut step = Kernel::empty();
+    let mut board = WgpuShader::empty();
+    let mut frame = 0;
+    while gpu.frame() {
+        // Every other frame, a generation.
+        if frame % 2 == 0 {
+            let board_now = now;
+            step.fill(&mut gpu, &next, (i) => {
+                let x = (i % W) as i32;
+                let y = (i / W) as i32;
+                let mut around = 0;
+                for dy in 0..3 {
+                    for dx in 0..3 {
+                        if dx != 1 || dy != 1 {
+                            let nx = (x + dx - 1 + W as i32) % W as i32;
+                            let ny = (y + dy - 1 + H as i32) % H as i32;
+                            around = around + board_now.get((ny * W as i32 + nx) as usize);
+                        }
+                    }
                 }
+                let alive = board_now.get(i) == 1;
+                if around == 3 || (alive && around == 2) { 1 } else { 0 }
+            });
+            let filled = next;
+            next = now;
+            now = filled;
+        }
+        frame = frame + 1;
+
+        let shown = now;
+        let time = gpu.time();
+        board.fullscreen(&mut gpu, (frag) => {
+            let x = (frag.uv.x * W as f32) as usize;
+            let y = (frag.uv.y * H as f32) as usize;
+            let at = (if y < H { y } else { H - 1 }) * W + (if x < W { x } else { W - 1 });
+            if shown.get(at) == 1 {
+                vec4(0.95, 0.75 + 0.2 * time.sin(), 0.3, 1.0)
+            } else {
+                vec4(0.05, 0.06, 0.1 + 0.05 * frag.uv.y, 1.0)
             }
-            vec4(colour.r * pulse, colour.g * pulse, colour.b * pulse, 1.0)
         });
         gpu.present();
     }
+}
+
+/// A kernel worked out on the GPU and read back: each item twice its input, plus one.
+fn checked(gpu: &mut Gpu) {
+    let mut numbers: [f32; 1000] = [0.0; 1000];
+    for i in 0..numbers.len {
+        numbers[i] = i as f32;
+    }
+    let input = gpu.upload(&numbers);
+    let output: gpu::Buffer<f32> = gpu.buffer(1000);
+    let mut double = Kernel::empty();
+    double.fill(gpu, &output, (i) => input.get(i) * 2.0 + 1.0);
+    let mut back: [f32; 1000] = [0.0; 1000];
+    gpu.read(&output, &mut back);
+    for i in 0..back.len {
+        if back[i] != i as f32 * 2.0 + 1.0 {
+            @fail("the GPU's sums are wrong");
+        }
+    }
+    gpu.say("compute: 1000 items worked out on the GPU, all right");
 }

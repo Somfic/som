@@ -36,6 +36,9 @@ pub struct Mir {
     pub glsl: HashMap<FuncId, Option<FuncId>>,
     /// Each instance of `wgsl`, the same in WGSL.
     pub wgsl: HashMap<FuncId, Option<FuncId>>,
+    /// Each instance of `mem::size_of`, and the type it measures: given its body by the
+    /// compile-time pass, which lays types out as C does.
+    pub size_of: HashMap<FuncId, TypeId>,
     /// The copies of functions compiled for the GPU, and GLSL's own functions: only shaders
     /// use them, never the program on the CPU.
     pub gpu: HashSet<FuncId>,
@@ -57,6 +60,7 @@ impl Mir {
             stages: HashMap::new(),
             glsl: HashMap::new(),
             wgsl: HashMap::new(),
+            size_of: HashMap::new(),
             lang_structs: HashMap::new(),
             gpu: HashSet::new(),
             struct_index: HashMap::new(),
