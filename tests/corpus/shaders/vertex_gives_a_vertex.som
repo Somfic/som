@@ -1,0 +1,12 @@
+// expect: error Shader
+
+/// A `@vertex` shader gives a `gpu::Vertex<S>`: where the corner lands, and what the fragment
+/// shader takes.
+struct Corner { pub pos: Vec3 }
+
+@vertex
+fn place(c: Corner) -> Vec4 {
+    vec4(c.pos, 1.0)
+}
+
+fn main() {}

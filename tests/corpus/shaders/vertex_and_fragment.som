@@ -1,0 +1,46 @@
+// expect: exit 0
+
+/// A `@vertex` shader takes a struct of the corner's numbers and gives a `gpu::Vertex<S>`: where
+/// the corner lands, and an `S` of the program's own, which the `@fragment` shader drawn with it
+/// takes, blended between the corners. Both are ordinary functions on the CPU too.
+use som::gpu;
+
+struct Corner { pub pos: Vec3, pub normal: Vec3, pub uv: Vec2, pub material: u32 }
+impl Copy for Corner {}
+
+struct Surface { pub normal: Vec3, pub uv: Vec2, pub material: u32 }
+impl Copy for Surface {}
+
+struct Scene { pub model: Mat4, pub view_projection: Mat4, pub light: Vec3, pub tint: Vec4 }
+
+@vertex
+fn place(c: Corner, s: &Scene) -> gpu::Vertex<Surface> {
+    let world = s.model * vec4(c.pos, 1.0);
+    let turned = s.model * vec4(c.normal, 0.0);
+    gpu::Vertex {
+        position: s.view_projection * world,
+        passed: Surface { normal: turned.xyz, uv: c.uv, material: c.material },
+    }
+}
+
+@fragment
+fn shade(surface: Surface, s: &Scene) -> Vec4 {
+    let lit = surface.normal.normalized.dot(&s.light).max(0.0);
+    let k = if surface.material == 1 { 0.5 } else { 1.0 };
+    vec4(s.tint.rgb * (0.1 + lit) * k, 1.0)
+}
+
+fn main() -> i32 {
+    let scene = Scene {
+        model: Mat4::identity(),
+        view_projection: Mat4::identity(),
+        light: vec3(0.0, 0.0, 1.0),
+        tint: vec4(1.0, 1.0, 1.0, 1.0),
+    };
+    let v = place(Corner { pos: vec3(1.0, 2.0, 3.0), normal: vec3(0.0, 0.0, 1.0), uv: vec2(0.0, 0.0), material: 0 }, &scene);
+    if v.position.y != 2.0 { return 1; }
+    let colour = shade(v.passed, &scene);
+    if colour.r < 1.0 { return 2; }
+    if gpu::shader(place).len == 0 || gpu::shader(shade).len == 0 { return 3; }
+    0
+}

@@ -68,6 +68,8 @@ enum Param {
     Fragment(TypeId),
     /// A `&` to a struct of uniforms.
     Uniforms(TypeId),
+    /// What its `@vertex` shader passes on: a struct of the program's own.
+    Varyings(TypeId),
     Unit,
 }
 
@@ -96,9 +98,9 @@ impl Translator<'_> {
             Some(msg![
                 "a fragment shader takes a ",
                 code("Fragment"),
-                ", a ",
+                " or what its vertex shader gives, may take a ",
                 code("&"),
-                " to a struct of uniforms, or both, and gives a ",
+                " to a struct of uniforms, and gives a ",
                 code("Vector<4, f32>"),
                 ": the pixel's colour"
             ])
@@ -113,6 +115,7 @@ impl Translator<'_> {
         }
         let mut params = Vec::new();
         let mut uniforms = None;
+        let mut input = false;
         for (i, &param) in func.params.iter().enumerate() {
             let param_span = body.locals[Local::new(i + 1)].span.clone();
             let (by_ref, to) = match self.mir.types.get(param) {
@@ -121,8 +124,14 @@ impl Translator<'_> {
             };
             params.push(if self.is_unit(param) {
                 Param::Unit
-            } else if self.is_lang(to, LangStruct::Fragment) {
+            } else if self.is_lang(to, LangStruct::Fragment) && !std::mem::replace(&mut input, true) {
                 Param::Fragment(to)
+            } else if !by_ref
+                && matches!(self.mir.types.get(to), Ty::Struct(def, args)
+                    if self.mir.struct_def(*def, args).variants.is_none())
+                && !std::mem::replace(&mut input, true)
+            {
+                Param::Varyings(to)
             } else if by_ref
                 && matches!(self.mir.types.get(to), Ty::Struct(def, args)
                     if self.mir.struct_def(*def, args).variants.is_none())
@@ -142,7 +151,15 @@ impl Translator<'_> {
         }
 
         self.uniforms = uniforms;
-        let (globals, uniform_args) = self.uniform_fields(uniforms, &span)?;
+        let (mut globals, uniform_args) = self.uniform_fields(uniforms, &span)?;
+        // Drawn with a vertex shader of the program's, which passes on what it takes.
+        let varyings = params.iter().find_map(|p| match p {
+            Param::Varyings(ty) => Some(*ty),
+            _ => None,
+        });
+        if let Some(out) = varyings {
+            globals.push_str(&self.varyings_struct(out, &span)?);
+        }
 
         let mut args = Vec::new();
         for param in params {
@@ -173,14 +190,23 @@ impl Translator<'_> {
                         false => format!("{name}({})", uniform_args.join(", ")),
                     }
                 }
+                Param::Varyings(ty) => self.from_varyings(ty, &span)?,
             });
         }
 
         let shader = self.func_name(self.entry);
-        let main = format!(
-            "{VERTEX}\n@fragment\nfn fs_main(v: SomVertex) -> @location(0) vec4<f32> {{\n    return {shader}({});\n}}\n",
-            args.join(", "),
-        );
+        let main = match varyings {
+            Some(_) => format!(
+                "@fragment\nfn fs_main(v: {}) -> @location(0) vec4<f32> {{\n    return {shader}({});\n}}\n",
+                crate::vertex::VARYINGS,
+                args.join(", "),
+            ),
+            // Over a rectangle: the vertex shader is its own.
+            None => format!(
+                "{VERTEX}\n@fragment\nfn fs_main(v: SomVertex) -> @location(0) vec4<f32> {{\n    return {shader}({});\n}}\n",
+                args.join(", "),
+            ),
+        };
         Ok(Main { globals, main })
     }
 

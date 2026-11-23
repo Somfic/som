@@ -1,0 +1,177 @@
+use som::gpu;
+use wgpu;
+
+// Physically based shading of a mesh: a `@vertex` shader places each corner of a sphere, and
+// a `@fragment` shader lights each pixel by Cook-Torrance (GGX, Smith, Schlick), given what
+// the vertex shader passes on, its `Surface`. The spheres go from smooth to rough, left to
+// right; the top row is metal. Four lights circle them.
+
+@const PI: f32 = 3.14159265;
+@const LIGHTS: usize = 4;
+
+/// A corner of the mesh.
+struct Corner {
+    pub pos: Vec3,
+    pub normal: Vec3,
+}
+
+impl Copy for Corner {}
+
+/// What the vertex shader passes on for each pixel: where it is, and which way it faces.
+struct Surface {
+    pub world: Vec3,
+    pub normal: Vec3,
+}
+
+impl Copy for Surface {}
+
+/// What both shaders are told, for each sphere.
+struct Scene {
+    pub model: Mat4,
+    pub view_projection: Mat4,
+    pub eye: Vec3,
+    pub albedo: Vec3,
+    pub metallic: f32,
+    pub roughness: f32,
+    /// Where each light is, and its colour times how bright.
+    pub lights: [Vec4; LIGHTS],
+    pub colours: [Vec4; LIGHTS],
+}
+
+@vertex
+fn place(c: Corner, s: &Scene) -> gpu::Vertex<Surface> {
+    let world = s.model * vec4(c.pos, 1.0);
+    let normal = s.model * vec4(c.normal, 0.0);
+    gpu::Vertex {
+        position: s.view_projection * world,
+        passed: Surface { world: world.xyz, normal: normal.xyz },
+    }
+}
+
+/// How many of the surface's tiny facets face halfway between the light and the eye (GGX).
+fn distribution(n_h: f32, roughness: f32) -> f32 {
+    let a = roughness * roughness;
+    let a2 = a * a;
+    let d = n_h * n_h * (a2 - 1.0) + 1.0;
+    a2 / (PI * d * d)
+}
+
+/// How many of the facets neither shadow nor hide each other (Smith, Schlick's GGX).
+fn visible(n_v: f32, n_l: f32, roughness: f32) -> f32 {
+    let r = roughness + 1.0;
+    let k = r * r / 8.0;
+    (n_v / (n_v * (1.0 - k) + k)) * (n_l / (n_l * (1.0 - k) + k))
+}
+
+/// How much light the surface reflects at angle `cos` rather than takes in (Schlick).
+fn fresnel(cos: f32, f0: Vec3) -> Vec3 {
+    let k = (1.0 - cos).max(0.0).pow(5.0);
+    f0 + (vec3(1.0, 1.0, 1.0) - f0) * k
+}
+
+@fragment
+fn shade(surface: Surface, s: &Scene) -> Vec4 {
+    let n = surface.normal.normalized;
+    let v = (s.eye - surface.world).normalized;
+    let n_v = n.dot(&v).max(0.0001);
+    // What a head-on reflection keeps: 4% for most things, the metal's colour for metal.
+    let f0 = vec3(0.04, 0.04, 0.04).mix(&s.albedo, s.metallic);
+    let mut light = vec3(0.0, 0.0, 0.0);
+    for i in 0..s.lights.len {
+        let to = s.lights[i].xyz - surface.world;
+        let far = to.length;
+        let l = to / far;
+        let h = (v + l).normalized;
+        let n_l = n.dot(&l).max(0.0);
+        let f = fresnel(h.dot(&v).max(0.0), f0);
+        let specular = f * (distribution(n.dot(&h).max(0.0), s.roughness) * visible(n_v, n_l, s.roughness) / (4.0 * n_v * n_l + 0.0001));
+        // What isn't reflected is taken in, and metal takes in nothing.
+        let taken = (vec3(1.0, 1.0, 1.0) - f) * (1.0 - s.metallic);
+        let diffuse = taken * s.albedo * (1.0 / PI);
+        let arriving = s.colours[i].xyz * (n_l / (far * far));
+        light = light + (diffuse + specular) * arriving;
+    }
+    let ambient = s.albedo * 0.03;
+    let c = light + ambient;
+    // Brightness without end, into 0 to 1; then as the screen shows it.
+    let mapped = vec3(c.x / (c.x + 1.0), c.y / (c.y + 1.0), c.z / (c.z + 1.0));
+    vec4(mapped.x.pow(0.4545), mapped.y.pow(0.4545), mapped.z.pow(0.4545), 1.0)
+}
+
+/// A sphere of radius 1: `rings` around, `segments` across each.
+fn sphere(gpu: &mut wgpu::Gpu) -> wgpu::Mesh<Corner> {
+    let rings: u32 = 32;
+    let segments: u32 = 64;
+    let mut corners: List<Corner> = List::empty();
+    for ring in 0..rings + 1 {
+        let theta = ring as f32 / rings as f32 * PI;
+        for segment in 0..segments + 1 {
+            let phi = segment as f32 / segments as f32 * 2.0 * PI;
+            let p = vec3(theta.sin() * phi.cos(), theta.cos(), theta.sin() * phi.sin());
+            corners.push(Corner { pos: p, normal: p });
+        }
+    }
+    let mut indices: List<u32> = List::empty();
+    for ring in 0..rings {
+        for segment in 0..segments {
+            let a = ring * (segments + 1) + segment;
+            let b = a + segments + 1;
+            indices.push(a);
+            indices.push(b);
+            indices.push(a + 1);
+            indices.push(b);
+            indices.push(b + 1);
+            indices.push(a + 1);
+        }
+    }
+    gpu.mesh(corners.as_slice(), indices.as_slice())
+}
+
+fn main() {
+    let mut gpu = wgpu::Gpu::open("spheres", 1100, 600);
+    let ball = sphere(&mut gpu);
+    let mut material = wgpu::Material::new(place, shade);
+    let mut background = wgpu::Shader::empty();
+    let mut labels = wgpu::Painter::new(&mut gpu);
+
+    while gpu.frame() {
+        let time = gpu.time();
+        background.fullscreen(&mut gpu, (frag) => vec4(0.02, 0.025, 0.04 + 0.05 * (1.0 - frag.uv.y), 1.0));
+
+        let aspect = gpu.width as f32 / gpu.height as f32;
+        let eye = vec3(0.0, 0.0, 11.0);
+        let view = Mat4::look_at(eye, vec3(0.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0));
+        let view_projection = Mat4::perspective(0.7, aspect, 0.1, 100.0) * view;
+        let mut lights = [vec4(0.0, 0.0, 0.0, 1.0); LIGHTS];
+        let mut colours = [vec4(0.0, 0.0, 0.0, 1.0); LIGHTS];
+        for i in 0..LIGHTS {
+            let angle = time * 0.6 + i as f32 * PI / 2.0;
+            lights[i] = vec4(7.0 * angle.cos(), 3.0 * (angle * 0.7).sin(), 6.0 + 2.0 * angle.sin(), 1.0);
+        }
+        colours[0] = vec4(60.0, 50.0, 40.0, 1.0);
+        colours[1] = vec4(30.0, 40.0, 60.0, 1.0);
+        colours[2] = vec4(50.0, 50.0, 50.0, 1.0);
+        colours[3] = vec4(40.0, 25.0, 20.0, 1.0);
+
+        for row in 0..2 {
+            for column in 0..5 {
+                let at = vec3((column as f32 - 2.0) * 2.4, (0.5 - row as f32) * 2.4, 0.0);
+                material.draw(&mut gpu, &ball, Scene {
+                    model: Mat4::translation(at) * Mat4::rotation_y(time * 0.3),
+                    view_projection,
+                    eye,
+                    albedo: if row == 0 { vec3(1.0, 0.78, 0.34) } else { vec3(0.75, 0.1, 0.12) },
+                    metallic: if row == 0 { 1.0 } else { 0.0 },
+                    roughness: 0.12 + column as f32 * 0.2,
+                    lights,
+                    colours,
+                });
+            }
+        }
+
+        let white = vec4(0.9, 0.9, 0.9, 1.0);
+        labels.text(&mut gpu, 20.0, 20.0, 16.0, "metal", white);
+        labels.text(&mut gpu, 20.0, 570.0, 16.0, "smooth  ->  rough", white);
+        gpu.present();
+    }
+}

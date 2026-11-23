@@ -1,0 +1,15 @@
+// expect: error Shader
+
+/// What a vertex shader passes on is blended between corners: numbers and vectors of them,
+/// not a `bool`.
+use som::gpu;
+
+struct Corner { pub pos: Vec3 }
+struct Surface { pub lit: bool }
+
+@vertex
+fn place(c: Corner) -> gpu::Vertex<Surface> {
+    gpu::Vertex { position: vec4(c.pos, 1.0), passed: Surface { lit: true } }
+}
+
+fn main() {}

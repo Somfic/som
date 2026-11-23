@@ -22,6 +22,11 @@ fn shaders_are_valid_wgsl() {
             .unwrap_or_else(|_| panic!("{} doesn't compile", path.display()));
         for shader in &program.shaders {
             let wgsl = &shader.wgsl;
+            // Laid out as `if`s and loops: a jump table only for what can't be, like a
+            // `break` out of two loops, which nothing in the corpus does.
+            if wgsl.contains("switch (bb)") {
+                failed.push(format!("{}: `{}` fell back to a jump table:\n{wgsl}", path.display(), shader.name));
+            }
             if let Err(problem) = check(wgsl) {
                 failed.push(format!("{}: naga rejected `{}`:\n{problem}\n{wgsl}", path.display(), shader.name));
             }

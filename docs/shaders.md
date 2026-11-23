@@ -1,13 +1,14 @@
 # Shaders
 
-*Status (2026-11-23): `@fragment` shaders, closures written as shaders, and compute kernels
-compile to WGSL and run through WebGPU, with the `wgpu` library (wgpu-native and SDL3):
-`example/wgpu`, `example/life`, `example/shooter`. WGSL is the only shader language;
-`@vertex` is parsed but not compiled yet.*
+*Status (2026-11-23): `@vertex` and `@fragment` shaders, closures written as shaders, and
+compute kernels compile to WGSL and run through WebGPU, with the `wgpu` library (wgpu-native
+and SDL3): `example/wgpu`, `example/life`, `example/shooter`, `example/spheres`. WGSL is the
+only shader language.*
 
-A shader is ordinary som code that runs on the GPU: for each pixel (a fragment shader) or for
-each item of a buffer (a compute kernel). It's a closure written where it's used, or a
-function marked `@fragment` or `@compute`. It's compiled for the GPU while compiling,
+A shader is ordinary som code that runs on the GPU: for each corner of a mesh (a vertex
+shader), each pixel (a fragment shader) or each item of a buffer (a compute kernel). It's a
+closure written where it's used, or a function marked `@vertex`, `@fragment` or
+`@compute`. It's compiled for the GPU while compiling,
 everything it calls with it, and it still runs (and can be tested) on the CPU.
 
 ## What's where
@@ -100,6 +101,50 @@ An array's items are 16 bytes apart, so `[f32; N]` and `[Vec2; N]` are declared 
 binding 1, and each texture and buffer the next, in order. The module has its own vertex
 shader, `vs_main`, one triangle over the viewport, and `fs_main`, which calls the shader;
 the host sets the viewport to where it's drawn.
+
+## Meshes: a `@vertex` shader and what it passes on
+
+A vertex shader runs for each corner of a mesh. It takes a struct of the corner's numbers
+and may take a `&` to a struct of uniforms; it gives a `gpu::Vertex<S>`: where the corner
+lands, in clip space, and `passed`, an `S` of the program's own. The fragment shader drawn
+with it takes that `S`, each field blended between the triangle's corners for the pixel:
+
+```som
+struct Corner { pub pos: Vec3, pub normal: Vec3 }
+struct Surface { pub world: Vec3, pub normal: Vec3 }
+
+@vertex
+fn place(c: Corner, s: &Scene) -> gpu::Vertex<Surface> {
+    let world = s.model * vec4(c.pos, 1.0);
+    gpu::Vertex { position: s.view_projection * world, passed: Surface { world: world.xyz, normal: … } }
+}
+
+@fragment
+fn shade(surface: Surface, s: &Scene) -> Vec4 { … }
+
+let ball: wgpu::Mesh<Corner> = gpu.mesh(corners.as_slice(), indices.as_slice());
+let mut material = wgpu::Material::new(place, shade);
+material.draw(&mut gpu, &ball, Scene { … });
+```
+
+`Material::new` is bounded so that the `S` the vertex shader gives is the one the fragment
+shader takes: a mismatch is a type error. Both take the same uniforms.
+
+- **The corner** is a struct of numbers and vectors of them (`f32`, `i32`, `u32`, `Vec2`…
+  `Vec4`): each field is a vertex attribute, `@location(i)` in field order, read from the
+  mesh's buffer as the CPU lays the struct out. The host finds each field's format by going
+  through the struct with `@for f in T` and a trait, `wgpu::Attribute`.
+- **What's passed on** is the same: numbers and vectors. Each field is `@location(i)` of
+  `SomVaryings`, declared alike in both modules, since both are made from `S`. Integers are
+  taken from the first corner (`@interpolate(flat)`) rather than blended.
+- **The two modules** are compiled apart, `gpu::shader(place)` and `gpu::shader(shade)`: a
+  vertex module with `vs_main`, and a fragment module with `fs_main` taking `SomVaryings`. A
+  fragment shader taking a `Fragment` instead keeps its own vertex shader, over a rectangle.
+- **Depth**: `wgpu` keeps a depth buffer the size of the window, cleared by the first
+  `Material` drawn each frame, so nearer pixels hide those behind.
+
+`example/spheres` lights a grid of spheres by Cook-Torrance (GGX, Smith, Schlick), from
+smooth to rough, metal and not, all in som.
 
 ## Compute kernels
 
@@ -275,6 +320,12 @@ The translation is MIR → WGSL, function by function:
 | local reference | the place it refers to, written out; indexes it reads are copied where it's made |
 | `if`, `while`, `loop`, `for`, `match` | `if`/`else` and `for (;;)` with `break`/`continue`, laid out by dominators (`structure.rs`) |
 | what can't be laid out that way (a `break` out of two loops) | `switch` on the next block, inside `for (;;)` |
+
+## Not yet
+
+- A vertex shader written as a closure; a vertex shader without a fragment shader.
+- Instancing, index buffers of `u16`s, more than one vertex buffer, culling.
+- Pixel position and the facing in a fragment shader taking what's passed on.
 
 ## Next
 

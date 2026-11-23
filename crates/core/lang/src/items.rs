@@ -120,8 +120,10 @@ named_enum! {
         Vector = "Vector",
         /// `C` columns of `R`-number `Vector`s: as a uniform, its columns 16 bytes apart.
         Matrix = "Matrix",
-        /// What a `@fragment` shader is given.
+        /// What a `@fragment` shader is given, drawn over a rectangle.
         Fragment = "Fragment",
+        /// What a `@vertex` shader gives: a position, and what its `@fragment` shader takes.
+        Vertex = "Vertex",
         /// An image on the GPU a shader samples: a `texture_2d<f32>`.
         Texture = "Texture",
         /// A uniform's value, as `gpu::each_uniform` gives it to the host.

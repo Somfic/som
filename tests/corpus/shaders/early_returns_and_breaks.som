@@ -1,0 +1,48 @@
+// expect: exit 0
+
+/// A `return` in the middle of a shader, from inside an `if` or a loop, and a loop left by
+/// `break`: each is laid out as the `if`s and loops it's written as, not as a jump table
+/// (`tests/wgsl.rs` checks no shader in this folder needs one).
+fn corner(uv: Vec2) -> Vec4 {
+    if uv.x > 0.5 {
+        if uv.y > 0.5 {
+            return vec4(1.0, 0.0, 0.0, 1.0);
+        }
+    }
+    vec4(0.0, 0.0, 0.0, 1.0)
+}
+
+fn first_band(uv: Vec2) -> f32 {
+    for i in 0..4 {
+        if uv.x < (i + 1) as f32 * 0.25 {
+            return i as f32;
+        }
+    }
+    4.0
+}
+
+fn doublings(x: f32) -> f32 {
+    let mut x = x;
+    let mut n = 0.0;
+    for _ in 0..8 {
+        x = x * 2.0;
+        n = n + 1.0;
+        if x > 1.0 {
+            break;
+        }
+    }
+    n
+}
+
+@fragment
+fn shapes(frag: Fragment) -> Vec4 {
+    let c = corner(frag.uv);
+    vec4(c.r, first_band(frag.uv) / 4.0, doublings(frag.uv.y) / 8.0, 1.0)
+}
+
+fn main() -> i32 {
+    if corner(vec2(0.9, 0.9)).r != 1.0 || corner(vec2(0.9, 0.1)).r != 0.0 { return 1; }
+    if first_band(vec2(0.6, 0.0)) != 2.0 { return 2; }
+    if doublings(0.3) != 2.0 { return 3; }
+    0
+}

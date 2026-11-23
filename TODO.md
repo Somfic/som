@@ -145,7 +145,14 @@ needed by the `@gpu` work too.
 - [ ] Libraries: no versions or dependencies yet, just folders found by name.
 - [x] `Matrix<C, R>` with the sizes in the type (`Matrix<K, R> * Matrix<C, K>`), `Mat4` transforms, matrices as uniforms (2026-11-23).
 - [ ] Matrices on the GPU are std's loops, not WGSL's `matCxR` and its `*`: once `@wgsl("…")` says how a std function is written in WGSL, use the native ones.
-- [ ] `@vertex` with a struct of the program's own passed to the fragment shader (`gpu::Vertex<S>`), meshes and a depth buffer in `wgpu`: for lit 3D (PBR).
+- [x] `@vertex` with a struct of the program's own passed to the fragment shader (`gpu::Vertex<S>`), `wgpu::Mesh`/`Material` with a depth buffer, `example/spheres` lit by Cook-Torrance (2026-11-23).
+- [ ] Vertex shaders written as closures (lowering marks a shader closure's stage `Fragment` unless it's a kernel).
+- [ ] Instancing, more than one vertex buffer, `u16` indices, back-face culling, MSAA.
+- [x] Early `return`s (in an `if`, in a loop) and `for` with `break` are laid out as `if`s and loops, not the jump table; `tests/wgsl.rs` fails on any corpus shader that falls back. The shooter went from ~30 to ~56 fps (2026-11-23).
+- [ ] Shaders are translated from MIR before the optimizer runs: copies (`t20 = t19; ret = t20;`), constants left unfolded (`5u + 1u`, `1.0 / 3.1415927`), a wrapper per std math method (`f_som_f32_max` around `max`). The GPU's compiler cleans these up, but the WGSL is 2-3x longer than it needs to be.
+- [ ] A uniform struct is rebuilt and passed by value into the shader, every field: an array among them (`Painter`'s 64 glyphs) is copied into the function's own memory for each pixel, then indexed. Read uniforms where they are (`som_u.glyphs[i].x`) instead.
+- [ ] The uniforms both stages of a `Material` take are all declared in each, used or not.
+- [ ] `@builtin(position)` and `front_facing` for a fragment shader taking what's passed on.
 - [ ] Imported C enums whose variants start with a digit keep their whole name (`WGPUTextureDimension::WGPUTextureDimension2D`).
 - [ ] `static const` flags in headers (`WGPUBufferUsage_Uniform`) aren't imported; the wgpu host writes them out.
 - [ ] Closures can't change what they capture, so the wgpu host packs uniforms through a raw pointer.

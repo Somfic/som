@@ -8,6 +8,10 @@
 //! after it a `break`. som's `if`, `while`, `loop`, `for` and `match` give only such shapes;
 //! anything else (a `break` out of two loops at once) is `None`, and the caller lays the
 //! blocks out another way.
+//!
+//! A `return` in the middle, `if far { return sky; }`, is a straight run of blocks to a
+//! `return` that nothing else jumps into: a dead end, left out when working out where
+//! branches meet and how a loop is left, and written where it is.
 
 use som_mir::{Body, BlockId, TerminatorKind};
 use std::collections::{HashMap, HashSet};
@@ -230,6 +234,30 @@ impl Graph {
                 preds[t].push(from);
             }
         }
+        // The dead ends: one side of a branch going straight on to a `return` that no other
+        // block jumps into on the way, `if far { return sky; }`.
+        let branch_sides: HashSet<usize> = (kinds.iter())
+            .flat_map(|k| match *k {
+                End::Branch(a, b) => vec![a, b],
+                _ => Vec::new(),
+            })
+            .collect();
+        let dead: Vec<bool> = (0..n)
+            .map(|b| {
+                if !branch_sides.contains(&b) {
+                    return false;
+                }
+                let mut at = b;
+                for _ in 0..=n {
+                    match kinds[at] {
+                        End::Return => return true,
+                        End::Goto(to) if preds[to].len() == 1 => at = to,
+                        _ => return false,
+                    }
+                }
+                false
+            })
+            .collect();
 
         let idom = dominators(n, 0, &succs, &preds);
         let dominates = |a: usize, mut b: usize| loop {
@@ -259,11 +287,49 @@ impl Graph {
             }
         }
         let mut loops = HashMap::new();
-        for (header, body) in bodies {
-            let exits: HashSet<usize> = (body.iter())
-                .flat_map(|&b| succs[b].iter().copied())
-                .filter(|s| !body.contains(s))
-                .collect();
+        for (header, mut body) in bodies {
+            let leaving = |body: &HashSet<usize>| -> HashSet<usize> {
+                (body.iter())
+                    .flat_map(|&b| succs[b].iter().copied())
+                    .filter(|s| !body.contains(s))
+                    .collect()
+            };
+            // A `break` going through blocks of its own to where the loop ends: those are
+            // the loop's, so it's left one way.
+            let mut exits = leaving(&body);
+            loop {
+                let folded = exits.iter().find_map(|&e| {
+                    let mut run = vec![e];
+                    let mut at = e;
+                    while let End::Goto(to) = kinds[at] {
+                        if exits.contains(&to) && to != e {
+                            return Some(run);
+                        }
+                        if preds[to].len() != 1 || body.contains(&to) || run.contains(&to) {
+                            return None;
+                        }
+                        run.push(to);
+                        at = to;
+                    }
+                    None
+                });
+                match folded {
+                    Some(run) => {
+                        body.extend(run);
+                        exits = leaving(&body);
+                    }
+                    None => break,
+                }
+            }
+            // A `return` from inside it isn't a way out it has to be laid out around: its own
+            // way out is the one that isn't, or the header's.
+            if exits.len() > 1 {
+                let living: HashSet<usize> = exits.iter().copied().filter(|&e| !dead[e]).collect();
+                exits = match living.len() {
+                    0 => (exits.iter().copied()).filter(|e| succs[header].contains(e)).take(1).collect(),
+                    _ => living,
+                };
+            }
             // Two ways out: no one `break` is both. Left to the caller's other layout.
             if exits.len() > 1 {
                 return None;
@@ -278,23 +344,11 @@ impl Graph {
             );
         }
 
-        // Post-dominators: dominators of the graph turned around, from one exit after every
-        // `return`.
-        let exit = n;
-        let mut rsuccs = vec![Vec::new(); n + 1];
-        let mut rpreds = vec![Vec::new(); n + 1];
-        for (from, to) in succs.iter().enumerate() {
-            if to.is_empty() && !unreachable[from] {
-                rsuccs[exit].push(from);
-                rpreds[from].push(exit);
-            }
-            for &t in to {
-                rsuccs[t].push(from);
-                rpreds[from].push(t);
-            }
-        }
-        let ipdom = dominators(n + 1, exit, &rsuccs, &rpreds);
-        let ipdom = (0..n).map(|b| ipdom[b].filter(|&p| p != exit)).collect();
+        // Post-dominators: where a branch's sides meet again. Where they only meet at the
+        // end, because one side returns early, where the others meet without the dead ends.
+        let all = post_dominators(&succs, &unreachable, |_| false);
+        let living = post_dominators(&succs, &unreachable, |b| dead[b]);
+        let ipdom = (0..n).map(|b| all[b].or(living[b])).collect();
 
         Some(Graph {
             ids,
@@ -304,6 +358,31 @@ impl Graph {
             ipdom,
         })
     }
+}
+
+/// Each block's immediate post-dominator, `None` where it's the end: the dominators of the
+/// graph turned around, from one exit after every `return`. A block `left_out` is as if it
+/// weren't there.
+fn post_dominators(succs: &[Vec<usize>], unreachable: &[bool], left_out: impl Fn(usize) -> bool) -> Vec<Option<usize>> {
+    let n = succs.len();
+    let exit = n;
+    let mut rsuccs = vec![Vec::new(); n + 1];
+    let mut rpreds = vec![Vec::new(); n + 1];
+    for (from, to) in succs.iter().enumerate() {
+        if left_out(from) {
+            continue;
+        }
+        if to.is_empty() && !unreachable[from] {
+            rsuccs[exit].push(from);
+            rpreds[from].push(exit);
+        }
+        for &t in to.iter().filter(|&&t| !left_out(t)) {
+            rsuccs[t].push(from);
+            rpreds[from].push(t);
+        }
+    }
+    let ipdom = dominators(n + 1, exit, &rsuccs, &rpreds);
+    (0..n).map(|b| ipdom[b].filter(|&p| p != exit)).collect()
 }
 
 /// Each node's immediate dominator, from `entry` (Cooper, Harvey and Kennedy's iteration):

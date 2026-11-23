@@ -10,6 +10,18 @@ pub struct Fragment {
 
 impl Copy for Fragment {}
 
+/// What a `@vertex` shader gives for each corner of what's drawn: where it lands on the
+/// screen, and `passed`, a struct of the program's own that the `@fragment` shader drawn with it
+/// takes, each field blended between the corners for each pixel (a normal, a `uv`, a colour).
+pub struct Vertex<S> {
+    /// In clip space: `x` and `y` from -1 to 1 across and up the screen once divided by `w`,
+    /// `z` from 0 (near) to 1 (far). What `projection * view * model * vec4(p, 1.0)` gives.
+    pub position: Vector<4, f32>,
+    pub passed: S,
+}
+
+impl<S: Copy> Copy for Vertex<S> {}
+
 /// The source of fragment shader `entry` in WGSL, for WebGPU: `fs_main`, and a vertex
 /// shader `vs_main` drawing it over the whole viewport. Made while compiling, so
 /// `shader(wobble)` costs nothing when it runs. `entry` is a `@fragment` function named where

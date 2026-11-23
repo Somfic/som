@@ -35,6 +35,9 @@ use som::gpu;
 @const BUFFER_COPY_SRC: u64 = 4;
 @const BUFFER_STORAGE: u64 = 128;
 @const BUFFER_MAP_READ: u64 = 1;
+@const BUFFER_INDEX: u64 = 16;
+@const BUFFER_VERTEX: u64 = 32;
+@const STAGE_VERTEX: u64 = 1;
 @const MAP_READ: u64 = 1;
 @const STAGE_FRAGMENT: u64 = 2;
 @const STAGE_COMPUTE: u64 = 4;
@@ -102,6 +105,12 @@ pub struct Gpu {
     buffer_sizes: [u64; MAX_LOADED],
     buffer_count: usize,
     start: u64,
+    /// How far each pixel drawn by a `Material` is, for nearer ones to hide those behind:
+    /// the size of the surface, cleared by the first that draws each frame.
+    depth: WGPUTextureImpl,
+    depth_view: WGPUTextureViewImpl,
+    has_depth: bool,
+    depth_cleared: bool,
     /// When this frame started, and how long after the one before, in seconds.
     now: u64,
     frame_time: f32,
@@ -243,6 +252,10 @@ impl Gpu {
             buffer_sizes: zeroed(),
             buffer_count: 0,
             start: sdl_get_ticks(),
+            depth: zeroed(),
+            depth_view: zeroed(),
+            has_depth: false,
+            depth_cleared: false,
             now: sdl_get_ticks(),
             frame_time: 0.0,
             pressed: [false; KEYS],
@@ -275,6 +288,28 @@ impl Gpu {
         config.alpha_mode = WGPUCompositeAlphaMode::Auto as i32;
         config.present_mode = WGPUPresentMode::Fifo as i32;
         wgpu_surface_configure(self.surface, &config);
+
+        // A depth buffer as big.
+        if self.has_depth {
+            wgpu_texture_view_release(self.depth_view);
+            wgpu_texture_release(self.depth);
+        }
+        self.has_depth = true;
+        let mut d: WGPUTextureDescriptor = zeroed();
+        d.usage = TEXTURE_RENDER;
+        d.dimension = WGPUTextureDimension::WGPUTextureDimension2D as i32;
+        d.size.width = width as u32;
+        d.size.height = height as u32;
+        d.size.depth_or_array_layers = 1;
+        d.format = WGPUTextureFormat::Depth32Float as i32;
+        d.mip_level_count = 1;
+        d.sample_count = 1;
+        self.depth = wgpu_device_create_texture(self.device, &d);
+        let mut v: WGPUTextureViewDescriptor = zeroed();
+        v.mip_level_count = UNDEFINED;
+        v.array_layer_count = UNDEFINED;
+        v.aspect = WGPUTextureAspect::All as i32;
+        self.depth_view = wgpu_texture_create_view(self.depth, &v);
     }
 
     /// Starts a frame: `false` once the window is closed (or Escape pressed).
@@ -320,6 +355,7 @@ impl Gpu {
         d.aspect = WGPUTextureAspect::All as i32;
         self.view = wgpu_texture_create_view(got.texture, &d);
         self.cleared = false;
+        self.depth_cleared = false;
         true
     }
 
@@ -712,7 +748,7 @@ struct Bindings {
 }
 
 fn bindings(gpu: &mut Gpu, packing: &Packing, fills: bool) -> Bindings {
-    let visible = STAGE_FRAGMENT | STAGE_COMPUTE;
+    let visible = STAGE_VERTEX | STAGE_FRAGMENT | STAGE_COMPUTE;
     let mut entries: [WGPUBindGroupLayoutEntry; 12] = zeroed();
     entries[0].binding = 0;
     entries[0].visibility = visible;
@@ -924,6 +960,219 @@ impl<U> Shader<U> {
         d.primitive.topology = WGPUPrimitiveTopology::TriangleList as i32;
         d.primitive.front_face = WGPUFrontFace::Ccw as i32;
         d.primitive.cull_mode = WGPUCullMode::None as i32;
+        d.multisample.count = 1;
+        d.multisample.mask = UNDEFINED;
+        d.fragment = &fragment as *;
+        self.pipeline = wgpu_device_create_render_pipeline(gpu.device, &d);
+        self.loaded = true;
+    }
+}
+
+/// What a mesh's corners are made of: each field of the struct `Material` draws them as, a
+/// vertex attribute, as WebGPU reads it.
+pub trait Attribute {
+    /// Its `WGPUVertexFormat`.
+    fn format(&self) -> i32;
+    /// How many bytes it takes.
+    fn bytes(&self) -> u64;
+}
+
+impl Attribute for f32 {
+    fn format(&self) -> i32 = WGPUVertexFormat::Float32 as i32;
+    fn bytes(&self) -> u64 = 4;
+}
+
+impl Attribute for i32 {
+    fn format(&self) -> i32 = WGPUVertexFormat::Sint32 as i32;
+    fn bytes(&self) -> u64 = 4;
+}
+
+impl Attribute for u32 {
+    fn format(&self) -> i32 = WGPUVertexFormat::Uint32 as i32;
+    fn bytes(&self) -> u64 = 4;
+}
+
+impl Attribute for Vector<2, f32> {
+    fn format(&self) -> i32 = WGPUVertexFormat::Float32x2 as i32;
+    fn bytes(&self) -> u64 = 8;
+}
+
+impl Attribute for Vector<3, f32> {
+    fn format(&self) -> i32 = WGPUVertexFormat::Float32x3 as i32;
+    fn bytes(&self) -> u64 = 12;
+}
+
+impl Attribute for Vector<4, f32> {
+    fn format(&self) -> i32 = WGPUVertexFormat::Float32x4 as i32;
+    fn bytes(&self) -> u64 = 16;
+}
+
+/// At most this many attributes in a mesh's corner.
+@const MOST_ATTRIBUTES: usize = 16;
+
+/// The attributes of corner struct `T`, one for each field in order, with where each is in
+/// it, as the CPU lays it out; how many there are.
+fn attributes<T>(into: &mut [WGPUVertexAttribute; MOST_ATTRIBUTES]) -> usize {
+    let sample: T = zeroed();
+    let mut n: usize = 0;
+    let mut offset: u64 = 0;
+    @for f in T {
+        if n < into.len {
+            into[n].format = Attribute::format(&sample.f);
+            into[n].offset = offset;
+            into[n].shader_location = n as u32;
+        }
+        offset = offset + Attribute::bytes(&sample.f);
+        n = n + 1;
+    }
+    if n > into.len { into.len } else { n }
+}
+
+/// Corners of `T`s on the GPU, and the triangles made of them: three indices each.
+pub struct Mesh<T> {
+    vertices: WGPUBufferImpl,
+    vertex_bytes: u64,
+    indices: WGPUBufferImpl,
+    index_count: u32,
+}
+
+impl<T> Drop for Mesh<T> {
+    fn drop(&mut self) {
+        wgpu_buffer_release(self.vertices);
+        wgpu_buffer_release(self.indices);
+    }
+}
+
+impl Gpu {
+    /// `vertices` and the triangles made of them, `indices` three to a triangle, copied onto
+    /// the GPU to be drawn by a `Material`.
+    pub fn mesh<T>(&mut self, vertices: &[T], indices: &[u32]) -> Mesh<T> {
+        let vertex_bytes = (vertices.len * size_of<T>()) as u64;
+        let index_bytes = (indices.len * 4) as u64;
+        let mut d: WGPUBufferDescriptor = zeroed();
+        d.usage = BUFFER_VERTEX | BUFFER_COPY_DST;
+        d.size = if vertex_bytes < 4 { 4 } else { vertex_bytes };
+        let vertex_buffer = wgpu_device_create_buffer(self.device, &d);
+        wgpu_queue_write_buffer(self.queue, vertex_buffer, 0, vertices as *, vertex_bytes);
+        d.usage = BUFFER_INDEX | BUFFER_COPY_DST;
+        d.size = if index_bytes < 4 { 4 } else { index_bytes };
+        let index_buffer = wgpu_device_create_buffer(self.device, &d);
+        wgpu_queue_write_buffer(self.queue, index_buffer, 0, indices as *, index_bytes);
+        Mesh { vertices: vertex_buffer, vertex_bytes, indices: index_buffer, index_count: indices.len as u32 }
+    }
+}
+
+/// A `@vertex` shader and the `@fragment` shader drawn with it, which takes what the vertex
+/// shader passes on: drawn over a `Mesh<A>`, with a `U` of uniforms both take, nearer pixels
+/// hiding those behind. Loaded the first time it's drawn.
+pub struct Material<A, U> {
+    vertex: string,
+    fragment: string,
+    loaded: bool,
+    pipeline: WGPURenderPipelineImpl,
+    bindings: Bindings,
+}
+
+impl<A, U> Material<A, U> {
+    /// `vertex` gives the `S` that `fragment` takes: the types say they go together.
+    pub fn new<S, V: fn(A, &U) -> gpu::Vertex<S>, F: fn(S, &U) -> Vector<4, f32>>(vertex: V, fragment: F) -> Material<A, U> {
+        Material {
+            vertex: gpu::shader(vertex),
+            fragment: gpu::shader(fragment),
+            loaded: false,
+            pipeline: zeroed(),
+            bindings: zeroed(),
+        }
+    }
+
+    /// `mesh`'s triangles, with `uniforms`.
+    pub fn draw(&mut self, gpu: &mut Gpu, mesh: &Mesh<A>, uniforms: U) {
+        if !gpu.drawing || mesh.index_count == 0 {
+            return;
+        }
+        let mut packing = Packing::new();
+        let into = &mut packing as *;
+        gpu::each_uniform(&uniforms, (i, name, value) => pack(into, value));
+        if !self.loaded {
+            self.load(gpu, &packing);
+        }
+        let group = self.bindings.group(gpu, &packing, 0);
+
+        let encoder_descriptor: WGPUCommandEncoderDescriptor = zeroed();
+        let encoder = wgpu_device_create_command_encoder(gpu.device, &encoder_descriptor);
+        let mut attachment: WGPURenderPassColorAttachment = zeroed();
+        attachment.view = gpu.view;
+        attachment.depth_slice = UNDEFINED;
+        attachment.load_op = if gpu.cleared { WGPULoadOp::Load as i32 } else { WGPULoadOp::Clear as i32 };
+        attachment.store_op = WGPUStoreOp::Store as i32;
+        attachment.clear_value = WGPUColor { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+        gpu.cleared = true;
+        let mut depth: WGPURenderPassDepthStencilAttachment = zeroed();
+        depth.view = gpu.depth_view;
+        depth.depth_load_op = if gpu.depth_cleared { WGPULoadOp::Load as i32 } else { WGPULoadOp::Clear as i32 };
+        depth.depth_store_op = WGPUStoreOp::Store as i32;
+        depth.depth_clear_value = 1.0;
+        gpu.depth_cleared = true;
+        let mut pass_descriptor: WGPURenderPassDescriptor = zeroed();
+        pass_descriptor.color_attachment_count = 1;
+        pass_descriptor.color_attachments = &attachment as *;
+        pass_descriptor.depth_stencil_attachment = &depth as *;
+        let pass = wgpu_command_encoder_begin_render_pass(encoder, &pass_descriptor);
+        wgpu_render_pass_encoder_set_pipeline(pass, self.pipeline);
+        let no_offsets: u32 = 0;
+        wgpu_render_pass_encoder_set_bind_group(pass, 0, group, 0, &no_offsets);
+        wgpu_render_pass_encoder_set_vertex_buffer(pass, 0, mesh.vertices, 0, mesh.vertex_bytes);
+        wgpu_render_pass_encoder_set_index_buffer(pass, mesh.indices, WGPUIndexFormat::Uint32 as i32, 0, mesh.index_count as u64 * 4);
+        wgpu_render_pass_encoder_draw_indexed(pass, mesh.index_count, 1, 0, 0, 0);
+        wgpu_render_pass_encoder_end(pass);
+        wgpu_render_pass_encoder_release(pass);
+        gpu.submit(encoder);
+        wgpu_bind_group_release(group);
+    }
+
+    fn load(&mut self, gpu: &mut Gpu, packing: &Packing) {
+        let vertex_module = shader_module(gpu, self.vertex);
+        let fragment_module = shader_module(gpu, self.fragment);
+        self.bindings = bindings(gpu, packing, false);
+
+        let mut fields: [WGPUVertexAttribute; MOST_ATTRIBUTES] = zeroed();
+        let count = attributes<A>(&mut fields);
+        let mut layout: WGPUVertexBufferLayout = zeroed();
+        layout.step_mode = WGPUVertexStepMode::Vertex as i32;
+        layout.array_stride = size_of<A>() as u64;
+        layout.attribute_count = count as u64;
+        layout.attributes = &fields as *;
+
+        let mut blend: WGPUBlendState = zeroed();
+        blend.color.operation = WGPUBlendOperation::Add as i32;
+        blend.color.src_factor = WGPUBlendFactor::SrcAlpha as i32;
+        blend.color.dst_factor = WGPUBlendFactor::OneMinusSrcAlpha as i32;
+        blend.alpha.operation = WGPUBlendOperation::Add as i32;
+        blend.alpha.src_factor = WGPUBlendFactor::One as i32;
+        blend.alpha.dst_factor = WGPUBlendFactor::OneMinusSrcAlpha as i32;
+        let mut target: WGPUColorTargetState = zeroed();
+        target.format = gpu.format;
+        target.write_mask = WRITE_ALL;
+        target.blend = &blend as *;
+        let mut fragment: WGPUFragmentState = zeroed();
+        fragment.module = fragment_module;
+        fragment.entry_point = view("fs_main");
+        fragment.target_count = 1;
+        fragment.targets = &target as *;
+        let mut depth: WGPUDepthStencilState = zeroed();
+        depth.format = WGPUTextureFormat::Depth32Float as i32;
+        depth.depth_write_enabled = WGPUOptionalBool::True as i32;
+        depth.depth_compare = WGPUCompareFunction::Less as i32;
+        let mut d: WGPURenderPipelineDescriptor = zeroed();
+        d.layout = self.bindings.pipeline_layout;
+        d.vertex.module = vertex_module;
+        d.vertex.entry_point = view("vs_main");
+        d.vertex.buffer_count = 1;
+        d.vertex.buffers = &layout as *;
+        d.primitive.topology = WGPUPrimitiveTopology::TriangleList as i32;
+        d.primitive.front_face = WGPUFrontFace::Ccw as i32;
+        d.primitive.cull_mode = WGPUCullMode::None as i32;
+        d.depth_stencil = &depth as *;
         d.multisample.count = 1;
         d.multisample.mask = UNDEFINED;
         d.fragment = &fragment as *;

@@ -25,6 +25,7 @@ mod error;
 mod names;
 mod structure;
 mod types;
+mod vertex;
 
 pub use compute::WORKGROUP;
 pub use error::ShaderError;
@@ -94,7 +95,7 @@ pub fn wgsl(mir: &Mir, entry: FuncId) -> Result<String, Vec<ShaderError>> {
         struct_names: HashMap::new(),
         func_names: HashMap::new(),
         // What's around a shader.
-        used: ["SomVertex", "SomUniforms", "som_u", body::SAMPLER, "vs_main", "fs_main", "cs_main"]
+        used: ["SomVertex", "SomUniforms", vertex::VARYINGS, "som_u", body::SAMPLER, "vs_main", "fs_main", "cs_main"]
             .map(String::from)
             .into(),
         uniforms: None,
@@ -176,28 +177,7 @@ impl Translator<'_> {
                 );
                 return String::new();
             }
-            Some(Stage::Vertex) => {
-                let func = &self.mir.funcs[self.entry];
-                self.fail(
-                    self.entry,
-                    Problem {
-                        message: msg![
-                            code(Stage::Vertex.name()),
-                            " shaders can't be compiled for the GPU yet"
-                        ],
-                        span: head(&func.span),
-                        label: "a vertex shader".into(),
-                        hint: Some(msg![
-                            "only ",
-                            code(Stage::Fragment.name()),
-                            " and ",
-                            code(Stage::Compute.name()),
-                            " shaders can, for now, drawn over what the host's vertex shader covers"
-                        ]),
-                    },
-                );
-                return String::new();
-            }
+            Some(Stage::Vertex) => self.vertex(),
             Some(Stage::Fragment) => self.fragment(),
             Some(Stage::Compute) => self.compute(),
         };
