@@ -1,0 +1,43 @@
+use som::gpu;
+use wgpu;
+
+// The "hello world" of the GPU: one triangle, a colour at each corner, and every pixel
+// between them a blend of the three.
+
+/// A corner of the triangle, as the mesh holds it.
+struct Point {
+    pub pos: Vec2,
+    pub colour: Vec3,
+}
+
+/// What the vertex shader passes on to each pixel: blended between the corners.
+struct Blend {
+    pub colour: Vec3,
+}
+
+
+
+fn main() {
+    let mut gpu = wgpu::Gpu::open("triangle", 800, 600);
+    let corners = [
+        Point { pos: vec2(0.0, 0.6), colour: vec3(1.0, 0.0, 0.0) },
+        Point { pos: vec2(-0.6, -0.6), colour: vec3(0.0, 1.0, 0.0) },
+        Point { pos: vec2(0.6, -0.6), colour: vec3(0.0, 0.0, 1.0) },
+    ];
+    let triangle = gpu.mesh(&corners, &[0, 1, 2]);
+    let mut material = wgpu::Material::plain(vertex, fragment);
+    while gpu.frame() {
+        material.draw(&mut gpu, &triangle, ());
+        gpu.present();
+    }
+}
+
+@vertex
+fn vertex(c: Point) -> gpu::Vertex<Vec3> {
+    gpu::Vertex { position: vec4(c.pos.x, c.pos.y, 0.0, 1.0), passed: c.colour }
+}
+
+@fragment
+fn fragment(colour: Vec3) -> Vec4 {
+    vec4(colour, 1.0)
+}

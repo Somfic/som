@@ -94,6 +94,9 @@ pub fn wgsl(mir: &Mir, entry: FuncId) -> Result<String, Vec<ShaderError>> {
         structs: Vec::new(),
         struct_names: HashMap::new(),
         func_names: HashMap::new(),
+        entry_bound: Vec::new(),
+        uniform_nodes: HashMap::new(),
+        queued: HashSet::new(),
         // What's around a shader.
         used: ["SomVertex", "SomUniforms", vertex::VARYINGS, "som_u", body::SAMPLER, "vs_main", "fs_main", "cs_main"]
             .map(String::from)
@@ -122,6 +125,36 @@ pub fn wgsl(mir: &Mir, entry: FuncId) -> Result<String, Vec<ShaderError>> {
     }
 }
 
+/// Parameters of a function bound to the uniforms, each by its index and the path of the part
+/// of the uniforms it refers to: they aren't passed, and are read from the uniforms where they
+/// are.
+pub(crate) type Bound = Vec<(usize, String)>;
+
+/// How a part of the uniforms is read.
+#[derive(Clone, Debug)]
+pub(crate) struct UniformNode {
+    /// Its type in the program.
+    pub ty: TypeId,
+    /// The whole of it, as a value: `som_u.time`, or a struct made from its members.
+    pub value: String,
+    pub kind: UniformKind,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum UniformKind {
+    /// A struct of the program's own, or the uniforms: each field another node.
+    Struct,
+    /// A member read as it is, `value`: what's inside it too, `som_u.camera_pos.x`. A texture
+    /// or buffer's global too.
+    Member,
+    /// Read only as a whole: a `bool`, held as a `u32`.
+    Whole,
+    /// An array whose items are 16 bytes apart: item `i` is `som_u.glyphs[i]` and `swizzle`.
+    Slots { member: String, swizzle: &'static str },
+    /// A matrix: column `i` is `som_u.model[i]` and `swizzle`.
+    Columns { member: String, swizzle: &'static str },
+}
+
 pub(crate) struct Translator<'a> {
     pub mir: &'a Mir,
     entry: FuncId,
@@ -135,7 +168,14 @@ pub(crate) struct Translator<'a> {
     /// Struct declarations, each after those it's made of.
     pub structs: Vec<String>,
     pub struct_names: HashMap<TypeId, String>,
-    func_names: HashMap<FuncId, String>,
+    func_names: HashMap<(FuncId, Bound), String>,
+    /// The shader's own parameters bound to the uniforms: its `&U`.
+    pub entry_bound: Bound,
+    /// Where each part of the uniforms is read from, by its path (`""` for all of them,
+    /// `camera`, `camera.pos`).
+    pub uniform_nodes: HashMap<String, UniformNode>,
+    /// The functions queued or translated, each with what it's bound to.
+    queued: HashSet<(FuncId, Bound)>,
     /// Names given to structs and functions.
     used: HashSet<String>,
     /// The shader's struct of uniforms: its textures and buffers are globals of their own,
@@ -147,7 +187,7 @@ pub(crate) struct Translator<'a> {
     pub uniform_paths: HashMap<TypeId, Option<String>>,
     /// How each function the shader reaches is first reached: by which function, where.
     reached: HashMap<FuncId, (FuncId, Span)>,
-    queue: Vec<FuncId>,
+    queue: Vec<(FuncId, Bound)>,
     /// Every call between the shader's functions, for finding any that call themselves.
     calls: Vec<(FuncId, FuncId, Span)>,
     /// Each function's prototype and definition.
@@ -185,9 +225,11 @@ impl Translator<'_> {
         if !self.errors.is_empty() {
             return String::new();
         }
-        self.queue.push(self.entry);
-        while let Some(func) = self.queue.pop() {
-            self.function(func);
+        let entry = (self.entry, self.entry_bound.clone());
+        self.queued.insert(entry.clone());
+        self.queue.push(entry);
+        while let Some((func, bound)) = self.queue.pop() {
+            self.function(func, bound);
         }
         self.recursion();
 
@@ -219,22 +261,32 @@ impl Translator<'_> {
         name
     }
 
-    pub(crate) fn func_name(&mut self, func: FuncId) -> String {
-        if let Some(name) = self.func_names.get(&func) {
+    /// The name of `func`, with parameters `bound` to the uniforms: a copy of its own.
+    pub(crate) fn func_name(&mut self, func: FuncId, bound: &Bound) -> String {
+        let key = (func, bound.clone());
+        if let Some(name) = self.func_names.get(&key) {
             return name.clone();
         }
         // WGSL's own functions can't be declared again: `sin`, `mix`, `length`.
-        let name = self.unique(format!("f_{}", names::ident(&self.mir.funcs[func].name)));
-        self.func_names.insert(func, name.clone());
+        let base = format!("f_{}", names::ident(&self.mir.funcs[func].name));
+        let name = self.unique(match bound.is_empty() {
+            true => base,
+            false => format!("{base}_u"),
+        });
+        self.func_names.insert(key, name.clone());
         name
     }
 
-    /// `callee` is called by `caller` at `span`: it's translated too, if it isn't yet.
-    pub(crate) fn reach(&mut self, caller: FuncId, callee: FuncId, span: &Span) {
+    /// `callee` is called by `caller` at `span`, with parameters `bound` to the uniforms:
+    /// it's translated too, if it isn't yet.
+    pub(crate) fn reach(&mut self, caller: FuncId, callee: FuncId, bound: Bound, span: &Span) {
         self.calls.push((caller, callee, span.clone()));
         if callee != self.entry && !self.reached.contains_key(&callee) {
             self.reached.insert(callee, (caller, span.clone()));
-            self.queue.push(callee);
+        }
+        let key = (callee, bound);
+        if self.queued.insert(key.clone()) {
+            self.queue.push(key);
         }
     }
 

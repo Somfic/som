@@ -6,7 +6,7 @@ use som_base::{Message, msg};
 use som_lang::LangStruct;
 use som_mir::*;
 
-use crate::Translator;
+use crate::{Translator, UniformKind, UniformNode};
 use crate::error::{NoGpu, Problem};
 use crate::names::ident;
 use crate::types::Scalar;
@@ -67,7 +67,7 @@ enum Param {
     /// A `Fragment` or `&Fragment`.
     Fragment(TypeId),
     /// A `&` to a struct of uniforms.
-    Uniforms(TypeId),
+    Uniforms,
     /// What its `@vertex` shader passes on: a struct of the program's own.
     Varyings(TypeId),
     Unit,
@@ -137,7 +137,7 @@ impl Translator<'_> {
                     if self.mir.struct_def(*def, args).variants.is_none())
                 && uniforms.replace(to).is_none()
             {
-                Param::Uniforms(to)
+                Param::Uniforms
             } else {
                 return Err(Problem {
                     span: param_span,
@@ -151,7 +151,7 @@ impl Translator<'_> {
         }
 
         self.uniforms = uniforms;
-        let (mut globals, uniform_args) = self.uniform_fields(uniforms, &span)?;
+        let mut globals = self.uniform_fields(uniforms, &span)?;
         // Drawn with a vertex shader of the program's, which passes on what it takes.
         let varyings = params.iter().find_map(|p| match p {
             Param::Varyings(ty) => Some(*ty),
@@ -162,7 +162,7 @@ impl Translator<'_> {
         }
 
         let mut args = Vec::new();
-        for param in params {
+        for (i, param) in params.into_iter().enumerate() {
             args.push(match param {
                 Param::Unit => continue,
                 Param::Fragment(ty) => {
@@ -183,18 +183,16 @@ impl Translator<'_> {
                     let name = self.ty(ty).map_err(|no| no.at(&span, "it".into()))?;
                     format!("{name}({})", parts.join(", "))
                 }
-                Param::Uniforms(ty) => {
-                    let name = self.ty(ty).map_err(|no| no.at(&span, "its uniforms".into()))?;
-                    match uniform_args.is_empty() {
-                        true => format!("{name}(false)"),
-                        false => format!("{name}({})", uniform_args.join(", ")),
-                    }
+                // Read where they are, not passed.
+                Param::Uniforms => {
+                    self.entry_bound.push((i, String::new()));
+                    continue;
                 }
                 Param::Varyings(ty) => self.from_varyings(ty, &span)?,
             });
         }
 
-        let shader = self.func_name(self.entry);
+        let shader = self.func_name(self.entry, &self.entry_bound.clone());
         let main = match varyings {
             Some(_) => format!(
                 "@fragment\nfn fs_main(v: {}) -> @location(0) vec4<f32> {{\n    return {shader}({});\n}}\n",
@@ -210,9 +208,9 @@ impl Translator<'_> {
         Ok(Main { globals, main })
     }
 
-    /// The globals declaring uniforms `ty`, and each of its members made from them, checking
-    /// each can be one.
-    pub(crate) fn uniform_fields(&mut self, uniforms: Option<TypeId>, span: &som_base::Span) -> Result<(String, Vec<String>), Problem> {
+    /// The globals declaring uniforms `ty`, checking each can be one; where each is read from
+    /// goes in `uniform_nodes`.
+    pub(crate) fn uniform_fields(&mut self, uniforms: Option<TypeId>, span: &som_base::Span) -> Result<String, Problem> {
         let problem = |message: Message, label: Message, hint: Option<Message>| Problem {
             message,
             span: span.clone(),
@@ -278,6 +276,10 @@ impl Translator<'_> {
         self.wgsl_uniforms(uniforms).map_err(|no| no.at(span, "its uniforms".into()))
     }
 
+    fn uniform_node(&mut self, path: &str, ty: TypeId, value: String, kind: UniformKind) {
+        self.uniform_nodes.insert(path.to_string(), UniformNode { ty, value, kind });
+    }
+
     /// What's bound apart from the uniform buffer: a texture or a storage buffer.
     pub(crate) fn is_handle(&self, ty: TypeId) -> bool {
         self.is_lang(ty, LangStruct::Texture) || self.is_lang(ty, LangStruct::Buffer)
@@ -307,7 +309,7 @@ impl Translator<'_> {
         }
     }
 
-    /// Uniforms `ty`'s declarations, and each of its members made from them.
+    /// Uniforms `ty`'s declarations; where each part of them is read from goes in `uniform_nodes`.
     ///
     /// Every uniform but a texture is a member of one struct, `SomUniforms`, in one buffer
     /// (binding 0), in the order `som::gpu::each_uniform` gives them to the host, which lays
@@ -316,21 +318,32 @@ impl Translator<'_> {
     /// are 16 bytes apart, so one of numbers or `vec2`s is of `vec4`s, using the first of
     /// each. A `bool` is a `u32`. The sampler is binding 1, and each texture the next, in
     /// order.
-    fn wgsl_uniforms(&mut self, ty: Option<TypeId>) -> Result<(String, Vec<String>), NoGpu> {
+    fn wgsl_uniforms(&mut self, ty: Option<TypeId>) -> Result<String, NoGpu> {
         let mut w = Wgsl::default();
         let mut made = Vec::new();
         if let Some(ty) = ty {
             let Ty::Struct(def, args) = self.mir.types.get(ty).clone() else {
                 unreachable!("uniforms are a struct")
             };
-            for (name, field) in self.mir.struct_def(def, &args).fields.clone() {
+            let mut by_index = std::collections::HashMap::new();
+            for (i, (name, field)) in self.mir.struct_def(def, &args).fields.clone().into_iter().enumerate() {
                 if self.is_unit(field) {
                     continue;
                 }
                 if let Some(value) = self.wgsl_leaf(&mut w, field, &name, 1)? {
-                    made.push(value);
+                    by_index.insert(i, value);
                 }
             }
+            // In the order of the struct's members, which leave its textures out.
+            for (_, _, i) in self.members(ty)? {
+                made.push(by_index.remove(&i).expect("each member is made"));
+            }
+            let name = self.ty(ty)?;
+            let value = match made.is_empty() {
+                true => format!("{name}(false)"),
+                false => format!("{name}({})", made.join(", ")),
+            };
+            self.uniform_node("", ty, value, UniformKind::Struct);
         }
         let mut globals = String::new();
         if !w.members.is_empty() {
@@ -344,7 +357,7 @@ impl Translator<'_> {
             globals.push_str(&format!("@group(0) @binding({}) {declared};\n", i + 2));
         }
         self.bindings = w.bound.len();
-        Ok((globals, made))
+        Ok(globals)
     }
 
     /// Uniform `ty` at `path`, `depth` structs in: its members added to `w`, and the value
@@ -354,6 +367,7 @@ impl Translator<'_> {
             let name = self.unique(format!("tex_{}", ident(path)));
             self.textures.insert(path.to_string(), name.clone());
             w.bound.push(format!("var {name}: texture_2d<f32>"));
+            self.uniform_node(path, ty, name, UniformKind::Member);
             return Ok(None);
         }
         // A storage buffer: used through a pointer to it.
@@ -361,6 +375,7 @@ impl Translator<'_> {
             let name = self.unique(format!("buf_{}", ident(path)));
             self.textures.insert(path.to_string(), name.clone());
             w.bound.push(format!("var<storage, read> {name}: array<u32>"));
+            self.uniform_node(path, ty, name, UniformKind::Member);
             return Ok(None);
         }
         // A struct of the program's own: field by field, as `each_uniform` goes into it.
@@ -384,16 +399,20 @@ impl Translator<'_> {
             let parts: Vec<String> = (self.members(ty)?.into_iter())
                 .map(|(_, _, i)| made.remove(&i).expect("each member is made"))
                 .collect();
-            return Ok(Some(match parts.is_empty() {
+            let value = match parts.is_empty() {
                 true => format!("{name}(false)"),
                 false => format!("{name}({})", parts.join(", ")),
-            }));
+            };
+            self.uniform_node(path, ty, value.clone(), UniformKind::Struct);
+            return Ok(Some(value));
         }
         let member = w.member(path);
         let at = format!("som_u.{member}");
         if self.scalar(ty)? == Some(Scalar::Bool) {
             w.members.push(self.member_line(&member, "u32"));
-            return Ok(Some(format!("({at} != 0u)")));
+            let value = format!("({at} != 0u)");
+            self.uniform_node(path, ty, value.clone(), UniformKind::Whole);
+            return Ok(Some(value));
         }
         // A matrix: its columns 16 bytes apart, as `vec4`s, each made as long as its own.
         if self.is_lang(ty, LangStruct::Matrix)
@@ -410,7 +429,9 @@ impl Translator<'_> {
             let items: Vec<String> = (0..n).map(|i| format!("{at}[{i}]{swizzle}")).collect();
             let column_array = self.ty(columns)?;
             let name = self.ty(ty)?;
-            return Ok(Some(format!("{name}({column_array}({}))", items.join(", "))));
+            let value = format!("{name}({column_array}({}))", items.join(", "));
+            self.uniform_node(path, ty, value.clone(), UniformKind::Columns { member: at, swizzle });
+            return Ok(Some(value));
         }
         if let Ty::Array { element, len } = self.mir.types.get(ty).clone()
             && self.native_vector(ty).is_none()
@@ -425,17 +446,21 @@ impl Translator<'_> {
             if size >= 3 {
                 let native = self.ty(ty)?;
                 w.members.push(self.member_line(&member, &native));
+                self.uniform_node(path, ty, at.clone(), UniformKind::Member);
                 return Ok(Some(at));
             }
             let slot = scalar.vector(4);
             w.members.push(self.member_line(&member, &format!("array<{slot}, {n}>")));
-            let swizzle = if size == 1 { "x" } else { "xy" };
-            let items: Vec<String> = (0..n).map(|i| format!("{at}[{i}].{swizzle}")).collect();
+            let swizzle = if size == 1 { ".x" } else { ".xy" };
+            let items: Vec<String> = (0..n).map(|i| format!("{at}[{i}]{swizzle}")).collect();
             let native = self.ty(ty)?;
-            return Ok(Some(format!("{native}({})", items.join(", "))));
+            let value = format!("{native}({})", items.join(", "));
+            self.uniform_node(path, ty, value.clone(), UniformKind::Slots { member: at, swizzle });
+            return Ok(Some(value));
         }
         let native = self.ty(ty)?;
         w.members.push(self.member_line(&member, &native));
+        self.uniform_node(path, ty, at.clone(), UniformKind::Member);
         Ok(Some(at))
     }
 

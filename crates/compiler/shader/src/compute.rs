@@ -85,7 +85,7 @@ impl Translator<'_> {
             } else if let Some(to) = lent
                 && uniforms.replace(to).is_none()
             {
-                args.push(Arg::Uniforms(to));
+                args.push(Arg::Uniforms(i));
             } else {
                 return Err(Problem {
                     message: msg!["a kernel can't take a ", self.ty_part(param)],
@@ -97,7 +97,7 @@ impl Translator<'_> {
         }
 
         self.uniforms = uniforms;
-        let (mut globals, made) = self.uniform_fields(uniforms, &span)?;
+        let mut globals = self.uniform_fields(uniforms, &span)?;
         // The buffer filled: after every other binding.
         globals.push_str(&format!(
             "@group(0) @binding({}) var<storage, read_write> {OUT}: array<u32>;\n",
@@ -105,19 +105,14 @@ impl Translator<'_> {
         ));
         let mut texts = Vec::new();
         for arg in args {
-            texts.push(match arg {
-                Arg::Index => "i".to_string(),
-                Arg::Uniforms(ty) => {
-                    let name = self.ty(ty).map_err(|no| no.at(&span, "its uniforms".into()))?;
-                    match made.is_empty() {
-                        true => format!("{name}(false)"),
-                        false => format!("{name}({})", made.join(", ")),
-                    }
-                }
-            });
+            match arg {
+                Arg::Index => texts.push("i".to_string()),
+                // Read where they are, not passed.
+                Arg::Uniforms(i) => self.entry_bound.push((i, String::new())),
+            }
         }
         let store = self.store(ret).map_err(|no| no.at(&span, msg!["it gives a ", self.ty_part(ret)]))?;
-        let kernel = self.func_name(self.entry);
+        let kernel = self.func_name(self.entry, &self.entry_bound.clone());
         let main = format!(
             "@compute @workgroup_size({WORKGROUP})\nfn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {{\n    \
              let i = id.x;\n    if (i >= arrayLength(&{OUT}) / {item}u) {{\n        return;\n    }}\n    \
@@ -286,5 +281,6 @@ impl Translator<'_> {
 /// What a kernel's parameter is given.
 enum Arg {
     Index,
-    Uniforms(TypeId),
+    /// The `&` to its uniforms, by the parameter's index.
+    Uniforms(usize),
 }

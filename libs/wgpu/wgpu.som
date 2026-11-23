@@ -1073,6 +1073,19 @@ pub struct Material<A, U> {
     bindings: Bindings,
 }
 
+impl<A> Material<A, ()> {
+    /// Shaders that take no uniforms: drawn with `()` for them.
+    pub fn plain<S, V: fn(A) -> gpu::Vertex<S>, F: fn(S) -> Vector<4, f32>>(vertex: V, fragment: F) -> Material<A, ()> {
+        Material {
+            vertex: gpu::shader(vertex),
+            fragment: gpu::shader(fragment),
+            loaded: false,
+            pipeline: zeroed(),
+            bindings: zeroed(),
+        }
+    }
+}
+
 impl<A, U> Material<A, U> {
     /// `vertex` gives the `S` that `fragment` takes: the types say they go together.
     pub fn new<S, V: fn(A, &U) -> gpu::Vertex<S>, F: fn(S, &U) -> Vector<4, f32>>(vertex: V, fragment: F) -> Material<A, U> {

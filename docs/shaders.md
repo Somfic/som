@@ -102,6 +102,12 @@ binding 1, and each texture and buffer the next, in order. The module has its ow
 shader, `vs_main`, one triangle over the viewport, and `fs_main`, which calls the shader;
 the host sets the viewport to where it's drawn.
 
+The shader reads its uniforms where they are: its `&U` isn't passed, and `u.lights[i]` is
+`som_u.lights[i].xyz`. A function given a `&` into the uniforms (`halls(frag, &s)`,
+`ripple(&u.image, …)`) gets a copy of its own reading them in place too, `f_halls_u`: WGSL
+can't pass a pointer to the uniform buffer, and copying it into each call would put every
+array among them in the function's own memory for each pixel.
+
 ## Meshes: a `@vertex` shader and what it passes on
 
 A vertex shader runs for each corner of a mesh. It takes a struct of the corner's numbers

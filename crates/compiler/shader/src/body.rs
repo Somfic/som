@@ -6,7 +6,7 @@ use som_lang::LangStruct;
 use som_mir::*;
 use std::collections::{HashMap, HashSet};
 
-use crate::Translator;
+use crate::{Bound, Translator, UniformKind};
 use crate::error::{NoGpu, Problem};
 use crate::names::ident;
 use crate::types::Scalar;
@@ -17,7 +17,7 @@ const NEXT: &str = "bb";
 
 impl Translator<'_> {
     /// Translates `func`, or says why it can't be.
-    pub(crate) fn function(&mut self, func: FuncId) {
+    pub(crate) fn function(&mut self, func: FuncId, bound: Bound) {
         let mir = self.mir;
         let function = &mir.funcs[func];
         let Some(body) = &function.body else {
@@ -28,6 +28,8 @@ impl Translator<'_> {
             body,
             names: local_names(body),
             aliases: HashMap::new(),
+            uniform: HashMap::new(),
+            bound,
             snapshots: HashMap::new(),
             span: function.span.clone(),
         };
@@ -58,6 +60,10 @@ struct Body<'a> {
     names: Vec<String>,
     /// Each reference, as the place it refers to written out: a parameter's is its name.
     aliases: HashMap<Local, String>,
+    /// The references to part of the uniforms, by its path: read from where it is.
+    uniform: HashMap<Local, String>,
+    /// This copy's parameters bound to the uniforms.
+    bound: Bound,
     /// The copies of indexes a reference's place reads, made where the reference is: each
     /// copy's name and the local it copies. The place stays the one borrowed even if the
     /// local holding the index changes after.
@@ -351,6 +357,13 @@ impl Body<'_> {
             if t.is_unit(param) {
                 continue;
             }
+            // Part of the uniforms: not passed, read where it is.
+            if let Some((_, path)) = self.bound.iter().find(|(index, _)| *index == i) {
+                let node = &t.uniform_nodes[path];
+                self.aliases.insert(local, node.value.clone());
+                self.uniform.insert(local, path.clone());
+                continue;
+            }
             self.span = decl.span.clone();
             let (mutable, ty) = match t.mir.types.get(param) {
                 Ty::Ref { mutable, to }
@@ -378,7 +391,7 @@ impl Body<'_> {
                 false => format!("{name}: {native}"),
             });
         }
-        let name = t.func_name(self.func);
+        let name = t.func_name(self.func, &self.bound);
         Ok(match t.is_unit(function.ret) {
             true => format!("fn {name}({})", params.join(", ")),
             false => format!("fn {name}({}) -> {ret}", params.join(", ")),
@@ -414,12 +427,21 @@ impl Body<'_> {
                             if is_ref(t, base) && !self.aliases.contains_key(&base) {
                                 continue;
                             }
-                            self.snapshots.remove(&local);
-                            self.place(t, place, Some(local))?
+                            // To a part of the uniforms: that part, read where it is.
+                            if let Some(path) = self.uniform_path(t, place) {
+                                self.uniform.insert(local, path.clone());
+                                t.uniform_nodes[&path].value.clone()
+                            } else {
+                                self.snapshots.remove(&local);
+                                self.place(t, place, Some(local))?
+                            }
                         }
                         Rvalue::Use(Operand::Copy(from) | Operand::Move(from))
                             if from.projection.is_empty() =>
                         {
+                            if let Some(path) = self.uniform.get(&from.local).cloned() {
+                                self.uniform.insert(local, path);
+                            }
                             match self.aliases.get(&from.local) {
                                 Some(text) => text.clone(),
                                 None => continue,
@@ -490,9 +512,12 @@ impl Body<'_> {
         place: &Place,
         snapshot: Option<Local>,
     ) -> Result<String, Problem> {
+        if self.uniform.contains_key(&place.local) {
+            return self.uniform_place(t, place, snapshot);
+        }
         let mut ty = self.local_ty(place.local);
         let mut projections = place.projection.iter();
-        let mut text = match self.aliases.get(&place.local) {
+        let text = match self.aliases.get(&place.local) {
             Some(alias) => {
                 match projections.next() {
                     Some(Projection::Deref) => {}
@@ -507,6 +532,18 @@ impl Body<'_> {
             }
             None => self.name(place.local).to_string(),
         };
+        self.projected(t, text, ty, projections.as_slice(), snapshot)
+    }
+
+    /// `projections` of `text`, a `ty`, written out.
+    fn projected(
+        &mut self,
+        t: &mut Translator,
+        mut text: String,
+        mut ty: TypeId,
+        projections: &[Projection],
+        snapshot: Option<Local>,
+    ) -> Result<String, Problem> {
         for projection in projections {
             match *projection {
                 Projection::Deref => return Err(self.kept_reference()),
@@ -552,21 +589,79 @@ impl Body<'_> {
                     text = format!("{text}.{member}");
                 }
                 Projection::Index(index) => {
-                    let index_text = match snapshot {
-                        Some(reference) => {
-                            let copies = self.snapshots.entry(reference).or_default();
-                            let name = format!("{}_i{}", self.names[reference.id], copies.len());
-                            copies.push((name.clone(), index));
-                            name
-                        }
-                        None => self.name(index).to_string(),
-                    };
+                    let index_text = self.index_text(index, snapshot);
                     ty = t.mir.project(ty, Projection::Index(index)).expect("validated MIR");
                     text = format!("{text}[{index_text}]");
                 }
             }
         }
         Ok(text)
+    }
+
+    /// Local `index` as an index: with `snapshot`, a copy of it made where reference
+    /// `snapshot` is.
+    fn index_text(&mut self, index: Local, snapshot: Option<Local>) -> String {
+        match snapshot {
+            Some(reference) => {
+                let copies = self.snapshots.entry(reference).or_default();
+                let name = format!("{}_i{}", self.names[reference.id], copies.len());
+                copies.push((name.clone(), index));
+                name
+            }
+            None => self.name(index).to_string(),
+        }
+    }
+
+    /// The path of the part of the uniforms `place` is, if it's a whole part: `camera` for
+    /// `(*u).camera`, where `u` refers to the uniforms.
+    fn uniform_path(&self, t: &Translator, place: &Place) -> Option<String> {
+        let mut path = self.uniform.get(&place.local)?.clone();
+        let mut projections = place.projection.iter();
+        if !matches!(projections.next(), Some(Projection::Deref)) {
+            return None;
+        }
+        for projection in projections {
+            let node = &t.uniform_nodes[&path];
+            let (UniformKind::Struct, Projection::Field(index)) = (&node.kind, projection) else {
+                return None;
+            };
+            path = child_path(t, &path, node.ty, *index);
+        }
+        Some(path)
+    }
+
+    /// `place`, in the uniforms: each part read where it is in `som_u`, an item of an array
+    /// or a matrix's column by itself, without making the whole.
+    fn uniform_place(&mut self, t: &mut Translator, place: &Place, snapshot: Option<Local>) -> Result<String, Problem> {
+        let mut path = self.uniform[&place.local].clone();
+        let projections = &place.projection[..];
+        let Some((Projection::Deref, mut rest)) = projections.split_first() else {
+            return Err(self.kept_reference());
+        };
+        loop {
+            let node = t.uniform_nodes[&path].clone();
+            match (&node.kind, rest) {
+                (UniformKind::Struct, [Projection::Field(index), more @ ..]) => {
+                    path = child_path(t, &path, node.ty, *index);
+                    rest = more;
+                }
+                (UniformKind::Slots { member, swizzle }, [Projection::Index(index), more @ ..]) => {
+                    let item = t.mir.project(node.ty, Projection::Index(*index)).expect("validated MIR");
+                    let index_text = self.index_text(*index, snapshot);
+                    let text = format!("{member}[{index_text}]{swizzle}");
+                    return self.projected(t, text, item, more, snapshot);
+                }
+                (UniformKind::Columns { member, swizzle }, [Projection::Field(0), Projection::Index(index), more @ ..]) => {
+                    let columns = t.mir.project(node.ty, Projection::Field(0)).expect("validated MIR");
+                    let column = t.mir.project(columns, Projection::Index(*index)).expect("validated MIR");
+                    let index_text = self.index_text(*index, snapshot);
+                    let text = format!("{member}[{index_text}]{swizzle}");
+                    return self.projected(t, text, column, more, snapshot);
+                }
+                // As a whole, or a member read as it is.
+                _ => return self.projected(t, node.value.clone(), node.ty, rest, snapshot),
+            }
+        }
     }
 
     fn operand(&mut self, t: &mut Translator, operand: &Operand) -> Result<String, Problem> {
@@ -845,8 +940,28 @@ impl Body<'_> {
             None => match vector_op(t, func, &texts) {
                 Some(native) => native,
                 None => {
-                    t.reach(self.func, func, &self.span);
-                    format!("{}({})", t.func_name(func), texts.join(", "))
+                    // A `&` to part of the uniforms isn't passed: the copy of the function
+                    // given it reads it where it is.
+                    let mut bound = Bound::new();
+                    let mut passed = Vec::new();
+                    let mut texts = texts.into_iter();
+                    for (i, (op, &param)) in args.iter().zip(&callee.params).enumerate() {
+                        if t.is_unit(param) {
+                            continue;
+                        }
+                        let text = texts.next().expect("one for each parameter");
+                        let lent = matches!(t.mir.types.get(param), Ty::Ref { mutable: false, .. });
+                        match op {
+                            Operand::Copy(place) | Operand::Move(place)
+                                if lent && place.projection.is_empty() && self.uniform.contains_key(&place.local) =>
+                            {
+                                bound.push((i, self.uniform[&place.local].clone()));
+                            }
+                            _ => passed.push(text),
+                        }
+                    }
+                    t.reach(self.func, func, bound.clone(), &self.span);
+                    format!("{}({})", t.func_name(func, &bound), passed.join(", "))
                 }
             },
         })
@@ -951,4 +1066,16 @@ fn binary(op: BinOp, scalar: Option<Scalar>, a: &str, b: &str) -> String {
         (BinOp::ShiftRight, _) => ">>",
     };
     format!("({a} {symbol} {b})")
+}
+
+/// The path of field `index` of `ty`, the part of the uniforms at `path`.
+fn child_path(t: &Translator, path: &str, ty: TypeId, index: usize) -> String {
+    let Ty::Struct(def, args) = t.mir.types.get(ty) else {
+        unreachable!("a struct among the uniforms")
+    };
+    let name = &t.mir.struct_def(*def, args).fields[index].0;
+    match path.is_empty() {
+        true => name.clone(),
+        false => format!("{path}.{name}"),
+    }
 }

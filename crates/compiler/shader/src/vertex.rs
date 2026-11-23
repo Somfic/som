@@ -27,7 +27,7 @@ const MOST: usize = 16;
 /// What a vertex shader's parameter is given.
 enum Param {
     Attributes(TypeId),
-    Uniforms(TypeId),
+    Uniforms,
     Unit,
 }
 
@@ -77,7 +77,7 @@ impl Translator<'_> {
             params.push(match self.mir.types.get(param).clone() {
                 _ if self.is_unit(param) => Param::Unit,
                 Ty::Ref { mutable: false, to } if plain_struct(self, to) && uniforms.replace(to).is_none() => {
-                    Param::Uniforms(to)
+                    Param::Uniforms
                 }
                 _ if plain_struct(self, param) && attributes.replace(param).is_none() => Param::Attributes(param),
                 _ => {
@@ -92,21 +92,19 @@ impl Translator<'_> {
         }
 
         self.uniforms = uniforms;
-        let (mut globals, uniform_args) = self.uniform_fields(uniforms, &span)?;
+        let mut globals = self.uniform_fields(uniforms, &span)?;
         globals.push_str(&self.varyings_struct(out, &span)?);
 
         // The attributes: each a parameter of `vs_main`, made into the struct.
         let mut inputs = Vec::new();
         let mut args = Vec::new();
-        for param in params {
+        for (i, param) in params.into_iter().enumerate() {
             args.push(match param {
                 Param::Unit => continue,
-                Param::Uniforms(ty) => {
-                    let name = self.ty(ty).map_err(|no| no.at(&span, "its uniforms".into()))?;
-                    match uniform_args.is_empty() {
-                        true => format!("{name}(false)"),
-                        false => format!("{name}({})", uniform_args.join(", ")),
-                    }
+                // Read where they are, not passed.
+                Param::Uniforms => {
+                    self.entry_bound.push((i, String::new()));
+                    continue;
                 }
                 Param::Attributes(ty) => {
                     let what = |t: &Translator| msg!["it takes a ", t.ty_part(ty)];
@@ -122,7 +120,7 @@ impl Translator<'_> {
             });
         }
 
-        let shader = self.func_name(self.entry);
+        let shader = self.func_name(self.entry, &self.entry_bound.clone());
         let vertex = self.ty(ret).map_err(|no| no.at(&span, "it".into()))?;
         let position = self.field_member(ret, "position");
         let passed_member = self.field_member(ret, "passed");

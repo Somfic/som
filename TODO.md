@@ -150,7 +150,7 @@ needed by the `@gpu` work too.
 - [ ] Instancing, more than one vertex buffer, `u16` indices, back-face culling, MSAA.
 - [x] Early `return`s (in an `if`, in a loop) and `for` with `break` are laid out as `if`s and loops, not the jump table; `tests/wgsl.rs` fails on any corpus shader that falls back. The shooter went from ~30 to ~56 fps (2026-11-23).
 - [ ] Shaders are translated from MIR before the optimizer runs: copies (`t20 = t19; ret = t20;`), constants left unfolded (`5u + 1u`, `1.0 / 3.1415927`), a wrapper per std math method (`f_som_f32_max` around `max`). The GPU's compiler cleans these up, but the WGSL is 2-3x longer than it needs to be.
-- [ ] A uniform struct is rebuilt and passed by value into the shader, every field: an array among them (`Painter`'s 64 glyphs) is copied into the function's own memory for each pixel, then indexed. Read uniforms where they are (`som_u.glyphs[i].x`) instead.
+- [x] Uniforms are read where they are (`som_u.glyphs[i].x`, a matrix column `som_u.model[i]`): the shader's `&U` isn't passed, and a function given a `&` into the uniforms gets a copy of its own reading them in place (`f_halls_u`). Only copying a whole struct of them into a variable still makes it (2026-11-23).
 - [ ] The uniforms both stages of a `Material` take are all declared in each, used or not.
 - [ ] `@builtin(position)` and `front_facing` for a fragment shader taking what's passed on.
 - [ ] Imported C enums whose variants start with a digit keep their whole name (`WGPUTextureDimension::WGPUTextureDimension2D`).
