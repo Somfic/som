@@ -1,0 +1,52 @@
+use som::gpu;
+use som::io;
+use wgpu;
+
+// Fibonacci numbers on the GPU: a kernel fills a buffer, each of its threads working out
+// one number on its own. Each number is the two before it added, which looks like it has
+// to go in order; but F(n) can be worked out from n alone, by doubling (below), so all of
+// them can be worked out at once. The same function runs on the CPU, to check them.
+
+/// The numbers worked out: F(47) is the last that fits in a `u32`.
+@const COUNT: usize = 48;
+
+/// Fibonacci number `n`, by doubling: from F(k) and F(k + 1),
+///     F(2k)     = F(k) * (2 F(k + 1) - F(k))
+///     F(2k + 1) = F(k)² + F(k + 1)²
+/// going through `n`'s bits from the top, so it takes 32 steps rather than `n`. Past the
+/// last that fits, it's the low 32 bits of the number, as `u32`s wrap.
+fn fibonacci(n: u32) -> u32 {
+    let mut a: u32 = 0;
+    let mut b: u32 = 1;
+    let mut bit: u32 = 32;
+    while bit > 0 {
+        bit = bit - 1;
+        let twice = a * (2 * b - a);
+        let plus_one = a * a + b * b;
+        if (n >> bit) & 1 == 1 {
+            a = plus_one;
+            b = twice + plus_one;
+        } else {
+            a = twice;
+            b = plus_one;
+        }
+    }
+    a
+}
+
+fn main() {
+    let mut gpu = wgpu::Gpu::headless();
+    let numbers: gpu::Buffer<u32> = gpu.buffer(COUNT);
+    let mut kernel = wgpu::Kernel::empty();
+    kernel.fill(&mut gpu, &numbers, (i) => fibonacci(i as u32));
+
+    let mut back: [u32; COUNT] = [0; COUNT];
+    gpu.read(&numbers, &mut back);
+    for i in 0..COUNT {
+        let cpu = fibonacci(i as u32);
+        if back[i] != cpu {
+            @fail("the GPU and the CPU disagree");
+        }
+        println("F({i}) = {back[i]}");
+    }
+}

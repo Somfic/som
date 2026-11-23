@@ -76,6 +76,8 @@ impl Copy for Key {}
 /// A window drawn to by the GPU, through WebGPU.
 pub struct Gpu {
     window: SDLWindow,
+    /// Whether there's a window: not for `Gpu::headless()`.
+    windowed: bool,
     instance: WGPUInstanceImpl,
     surface: WGPUSurfaceImpl,
     adapter: WGPUAdapterImpl,
@@ -165,6 +167,40 @@ fn buttons() -> u32 {
 /// `text`, which ends in a 0 byte, as WebGPU takes text.
 fn view(text: cstr) -> WGPUStringView = WGPUStringView { data: text, length: STRLEN };
 
+/// A GPU to work with, one that can draw to `surface` if there is one.
+fn find_adapter(instance: WGPUInstanceImpl, surface: WGPUSurfaceImpl) -> WGPUAdapterImpl {
+    let mut options: WGPURequestAdapterOptions = zeroed();
+    options.compatible_surface = surface;
+    let mut found = Waiting { done: false, ok: false, value: null() };
+    let mut asked: WGPURequestAdapterCallbackInfo = zeroed();
+    asked.mode = WGPUCallbackMode::AllowProcessEvents as i32;
+    asked.callback = got_adapter as *;
+    asked.userdata1 = &mut found as *;
+    wgpu_instance_request_adapter(instance, &options, asked);
+    waited(instance, &found);
+    if !found.ok {
+        @fail("no GPU adapter");
+    }
+    *(&found.value as *WGPUAdapterImpl).at(0)
+}
+
+/// `adapter` opened, mistakes in how it's used said when wgpu finds them.
+fn open_device(instance: WGPUInstanceImpl, adapter: WGPUAdapterImpl) -> WGPUDeviceImpl {
+    let mut descriptor: WGPUDeviceDescriptor = zeroed();
+    descriptor.uncaptured_error_callback_info.callback = on_error as *;
+    let mut made = Waiting { done: false, ok: false, value: null() };
+    let mut asked: WGPURequestDeviceCallbackInfo = zeroed();
+    asked.mode = WGPUCallbackMode::AllowProcessEvents as i32;
+    asked.callback = got_device as *;
+    asked.userdata1 = &mut made as *;
+    wgpu_adapter_request_device(adapter, &descriptor, asked);
+    waited(instance, &made);
+    if !made.ok {
+        @fail("no GPU device");
+    }
+    *(&made.value as *WGPUDeviceImpl).at(0)
+}
+
 fn waited(instance: WGPUInstanceImpl, waiting: &Waiting) {
     let at = waiting as * as *Waiting;
     while !at.at(0).done {
@@ -191,33 +227,8 @@ impl Gpu {
         surface_descriptor.next_in_chain = &source as *;
         let surface = wgpu_instance_create_surface(instance, &surface_descriptor);
 
-        let mut options: WGPURequestAdapterOptions = zeroed();
-        options.compatible_surface = surface;
-        let mut found = Waiting { done: false, ok: false, value: null() };
-        let mut asked: WGPURequestAdapterCallbackInfo = zeroed();
-        asked.mode = WGPUCallbackMode::AllowProcessEvents as i32;
-        asked.callback = got_adapter as *;
-        asked.userdata1 = &mut found as *;
-        wgpu_instance_request_adapter(instance, &options, asked);
-        waited(instance, &found);
-        if !found.ok {
-            @fail("no GPU adapter");
-        }
-        let adapter = *(&found.value as *WGPUAdapterImpl).at(0);
-
-        let mut device_descriptor: WGPUDeviceDescriptor = zeroed();
-        device_descriptor.uncaptured_error_callback_info.callback = on_error as *;
-        let mut made = Waiting { done: false, ok: false, value: null() };
-        let mut asked_device: WGPURequestDeviceCallbackInfo = zeroed();
-        asked_device.mode = WGPUCallbackMode::AllowProcessEvents as i32;
-        asked_device.callback = got_device as *;
-        asked_device.userdata1 = &mut made as *;
-        wgpu_adapter_request_device(adapter, &device_descriptor, asked_device);
-        waited(instance, &made);
-        if !made.ok {
-            @fail("no GPU device");
-        }
-        let device = *(&made.value as *WGPUDeviceImpl).at(0);
+        let adapter = find_adapter(instance, surface);
+        let device = open_device(instance, adapter);
 
         // Plain 8-bit colour, as raylib draws: a shader's colours are written as they are.
         let mut capabilities: WGPUSurfaceCapabilities = zeroed();
@@ -232,6 +243,7 @@ impl Gpu {
 
         let mut gpu = Gpu {
             window,
+            windowed: true,
             instance,
             surface,
             adapter,
@@ -263,6 +275,47 @@ impl Gpu {
         };
         gpu.fit();
         gpu
+    }
+
+    /// The GPU without a window: for compute kernels, and reading back what they work out.
+    /// Nothing is drawn: `frame` and `present` aren't for it.
+    pub fn headless() -> Gpu {
+        let instance_descriptor: WGPUInstanceDescriptor = zeroed();
+        let instance = wgpu_create_instance(&instance_descriptor);
+        let adapter = find_adapter(instance, zeroed());
+        let device = open_device(instance, adapter);
+        Gpu {
+            window: zeroed(),
+            windowed: false,
+            instance,
+            surface: zeroed(),
+            adapter,
+            device,
+            queue: wgpu_device_get_queue(device),
+            format: 0,
+            width: 0,
+            height: 0,
+            scale: 1.0,
+            frame: zeroed(),
+            view: zeroed(),
+            cleared: false,
+            drawing: false,
+            views: zeroed(),
+            textures: zeroed(),
+            loaded: 0,
+            buffers: zeroed(),
+            buffer_sizes: zeroed(),
+            buffer_count: 0,
+            start: sdl_get_ticks(),
+            depth: zeroed(),
+            depth_view: zeroed(),
+            has_depth: false,
+            depth_cleared: false,
+            now: sdl_get_ticks(),
+            frame_time: 0.0,
+            pressed: [false; KEYS],
+            moved: vec2(0.0, 0.0),
+        }
     }
 
     /// Sizes the surface to the window, if it isn't.
@@ -603,8 +656,10 @@ impl Drop for Gpu {
                 wgpu_buffer_release(self.buffers[i]);
             }
         }
-        sdl_destroy_window(self.window);
-        sdl_quit();
+        if self.windowed {
+            sdl_destroy_window(self.window);
+            sdl_quit();
+        }
     }
 }
 
