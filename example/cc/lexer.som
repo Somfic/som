@@ -92,7 +92,7 @@ mod fn tokenize(src: &string) -> List<Token> {
                 value = escape(byte(src, i));
                 i = i + 1;
             }
-            if byte(src, i) != 39 { fail(line, "a character literal needs a closing `'`"); }
+            if byte(src, i) != 39 { compile_error(line, "a character literal needs a closing `'`"); }
             i = i + 1;
             tokens.push(token(Kind::Num, "'", value, line));
             continue;

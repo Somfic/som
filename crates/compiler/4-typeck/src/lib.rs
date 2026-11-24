@@ -6,6 +6,7 @@ mod consts;
 mod error;
 mod exhaustive;
 mod impls;
+pub mod failures;
 pub mod stubs;
 mod ty;
 mod unify;
@@ -34,7 +35,13 @@ pub fn check(ast: &Ast, names: &Names) -> (Typed, Vec<TypeError>) {
 pub fn check_with(ast: &Ast, names: &Names, known: &ConstValues) -> Checked {
     let mut checker = check::Checker::new(ast, names);
     checker.known = known.clone();
-    let (typed, errors, needed) = checker.run_needing();
+    let (mut typed, mut errors, needed) = checker.run_needing();
+    // What each `T!` can fail with: only worked out of a program that checks.
+    if errors.is_empty() {
+        let (failures, failing) = failures::infer(ast, names, &typed);
+        typed.failures = failures;
+        errors.extend(failing);
+    }
     Checked {
         typed,
         errors,
@@ -144,11 +151,16 @@ pub struct Typed {
     /// References to arrays used where a slice is expected (`&numbers` for a `[i32]`), and
     /// `[mut T]`s used where a `[T]` is.
     sliced: HashMap<Id<Expr>, TypeId>,
+    /// Values made a `dyn Trait` where used, `NotFound { .. }` passed for a `dyn Display` →
+    /// that type. Made after whatever else they become but a `T!`.
+    made_dyn: HashMap<Id<Expr>, TypeId>,
     /// Every `impl` block, indexed like `Names::impls`.
     pub impls: Vec<impls::ImplInfo>,
     /// The constant values it was checked with.
     const_values: ConstValues,
     records: Records,
+    /// What each function giving a `T!` can fail with.
+    pub failures: failures::Failures,
 }
 
 /// Holds no inference variables, so it moves into `Typed` as is.
@@ -177,6 +189,11 @@ pub(crate) struct Records {
     pub(crate) field_calls: HashMap<Id<Expr>, usize>,
     /// Expressions that become an optional where used: `5` in `let x: i32? = 5`.
     pub(crate) wrapped: HashSet<Id<Expr>>,
+    /// Expressions that become a `T!` holding them where used: `5` in `fn f() -> i32! { 5 }`.
+    /// What else they become, `wrapped` or `sliced`, comes first.
+    pub(crate) ok_wrapped: HashSet<Id<Expr>>,
+    /// `match`es on a `T!` → their `fail …` arms.
+    pub(crate) failure_arms: HashMap<Id<Expr>, FailureArms>,
     /// `&mut T`s used where a `&T` is expected: each lent as `&*r`.
     pub(crate) downgraded: HashSet<Id<Expr>>,
     /// Reads of an optional place inside `if x { … }`: they read the value it holds.
@@ -227,8 +244,36 @@ pub enum Receiver {
     Share,
 }
 
+/// The `fail …` arms of a `match` on a `T!`: what's covered, for checking once what it can
+/// fail with is worked out.
+#[derive(Clone, Debug, Default)]
+pub struct FailureArms {
+    /// An arm matching any failure: `fail e`, `fail _`, `_`.
+    pub catch_all: bool,
+    /// For each struct or enum with arms of its own, in order: whether they match all of its
+    /// values, and the first one's pattern.
+    pub kinds: Vec<(DefId, bool, Id<Pattern>)>,
+    /// For those that don't match all, arms that would: `fail Bad::Late`.
+    pub missing: Vec<(DefId, Vec<String>)>,
+}
+
+/// What a `fail …` pattern matches.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Failed {
+    /// `fail e`: any failure, `e` the `Error`.
+    Any,
+    /// `fail NotFound { path }`, `fail ParseError::Empty`: a failure with a value of this
+    /// struct or enum, which the pattern after `fail` matches through a reference.
+    Of(DefId),
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct PatternInfo {
+    /// Matched against a `T!`, it matches the `T` held: `5` against an `i32!`. Before
+    /// `unwraps`, as a `T?!` holds an optional.
+    pub unwraps_ok: bool,
+    /// A `fail …` pattern, matched against a `T!`.
+    pub failed: Option<Failed>,
     /// Matched against an optional, it matches the value held: `Circle(r)` against a `Shape?`.
     pub unwraps: bool,
     /// For a variant pattern or a bare name naming one.
@@ -466,6 +511,10 @@ impl Typed {
 
     /// The slice type `expr` becomes where it's used, if it does: a reference to an array, or
     /// a `[mut T]` where a `[T]` is expected.
+    pub fn made_dyn(&self, expr: Id<Expr>) -> Option<TypeId> {
+        self.made_dyn.get(&expr).copied()
+    }
+
     pub fn sliced_to(&self, expr: Id<Expr>) -> Option<TypeId> {
         self.sliced.get(&expr).copied()
     }
@@ -596,6 +645,14 @@ impl Typed {
 
     pub fn is_wrapped(&self, expr: Id<Expr>) -> bool {
         self.records.wrapped.contains(&expr)
+    }
+
+    pub fn failure_arms(&self, expr: Id<Expr>) -> Option<&FailureArms> {
+        self.records.failure_arms.get(&expr)
+    }
+
+    pub fn is_ok_wrapped(&self, expr: Id<Expr>) -> bool {
+        self.records.ok_wrapped.contains(&expr)
     }
 
     pub fn display(&self, id: TypeId, names: &Names) -> String {

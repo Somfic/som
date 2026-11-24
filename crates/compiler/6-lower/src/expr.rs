@@ -10,11 +10,21 @@ impl FnBuilder<'_, '_> {
     /// becomes one; where an optional is expected, a value is wrapped in one.
     pub(super) fn operand(&mut self, expr: Id<Expr>) -> Operand {
         let typed = self.typed.clone();
+        // Where a `T!` is expected: the `T` it's made first, then held.
+        if typed.is_ok_wrapped(expr) {
+            let rvalue = self.rvalue(expr);
+            let ty = self.used_ty(expr);
+            return self.temp_read(ty, rvalue, self.span(expr));
+        }
         if let Some((method, type_args)) = typed.conversion(expr) {
             return self.convert(expr, method, type_args.to_vec());
         }
         if typed.is_fn_pointer(expr) {
             return self.address_of(expr);
+        }
+        if typed.made_dyn(expr).is_some() {
+            let value = self.operand_unwrapped(expr);
+            return self.made_dyn(expr, value);
         }
         if !typed.is_wrapped(expr) && typed.sliced_to(expr).is_none() && !typed.is_downgraded(expr)
         {
@@ -96,8 +106,21 @@ impl FnBuilder<'_, '_> {
     /// Made a slice or wrapped in an optional where that's what's expected.
     pub(super) fn rvalue(&mut self, expr: Id<Expr>) -> Rvalue {
         let typed = self.typed.clone();
-        if typed.conversion(expr).is_some() || typed.is_fn_pointer(expr) {
-            return Rvalue::Use(self.operand(expr));
+        if typed.is_ok_wrapped(expr) {
+            let ok = self.used_ty_unwrapped(expr);
+            let value = self.operand_not_ok_wrapped(expr);
+            return self.ok_wrapped(value, ok);
+        }
+        self.rvalue_not_ok_wrapped(expr)
+    }
+
+    fn rvalue_not_ok_wrapped(&mut self, expr: Id<Expr>) -> Rvalue {
+        let typed = self.typed.clone();
+        if typed.conversion(expr).is_some()
+            || typed.is_fn_pointer(expr)
+            || typed.made_dyn(expr).is_some()
+        {
+            return Rvalue::Use(self.operand_not_ok_wrapped(expr));
         }
         // A `&mut T` where a `&T` is expected: `&*r`, lending what it refers to.
         if typed.is_downgraded(expr) {
@@ -138,8 +161,39 @@ impl FnBuilder<'_, '_> {
         Rvalue::Some(Operand::Move(Place::local(temp)))
     }
 
-    /// The type `expr` has where it's used: made a slice, or wrapped in an optional.
+    /// The type `expr` has where it's used: made a slice, or wrapped in an optional, and
+    /// then perhaps in a `T!`.
     pub(super) fn used_ty(&mut self, expr: Id<Expr>) -> TypeId {
+        let ty = self.used_ty_unwrapped(expr);
+        match self.typed.is_ok_wrapped(expr) {
+            true => self.outcome_of(ty),
+            false => ty,
+        }
+    }
+
+    /// `expr`'s operand as made where it's used, but not held in a `T!`.
+    fn operand_not_ok_wrapped(&mut self, expr: Id<Expr>) -> Operand {
+        let typed = self.typed.clone();
+        if let Some((method, type_args)) = typed.conversion(expr) {
+            return self.convert(expr, method, type_args.to_vec());
+        }
+        if typed.is_fn_pointer(expr) {
+            return self.address_of(expr);
+        }
+        if typed.made_dyn(expr).is_some() {
+            let value = self.operand_unwrapped(expr);
+            return self.made_dyn(expr, value);
+        }
+        if !typed.is_wrapped(expr) && typed.sliced_to(expr).is_none() && !typed.is_downgraded(expr)
+        {
+            return self.operand_unwrapped(expr);
+        }
+        let rvalue = self.rvalue_not_ok_wrapped(expr);
+        let ty = self.used_ty_unwrapped(expr);
+        self.temp_read(ty, rvalue, self.span(expr))
+    }
+
+    fn used_ty_unwrapped(&mut self, expr: Id<Expr>) -> TypeId {
         if self.typed.is_fn_pointer(expr) {
             let item = self.expr_ty(expr);
             let id = self.l.fn_item_instance(item).expect("a function's own type");
@@ -149,6 +203,9 @@ impl FnBuilder<'_, '_> {
                 ret: function.ret,
             };
             return self.l.mir.types.intern(ty);
+        }
+        if let Some(dyn_ty) = self.typed.made_dyn(expr) {
+            return self.ty(dyn_ty);
         }
         let ty = match self.typed.sliced_to(expr) {
             Some(slice) => self.ty(slice),
@@ -223,7 +280,19 @@ impl FnBuilder<'_, '_> {
                 lhs,
                 rhs,
             } => self.short_circuit(*op, *lhs, *rhs, ty, span),
-            Expr::Fallback { optional, fallback } => self.fallback(*optional, *fallback, ty, span),
+            Expr::Fallback { optional, fallback } => {
+                let given = self.expr_ty(*optional);
+                match self.outcome_inner(given) {
+                    Some(_) => self.failable_fallback(*optional, None, *fallback, ty, span),
+                    None => self.fallback(*optional, *fallback, ty, span),
+                }
+            }
+            Expr::Recover {
+                failable,
+                error,
+                body,
+            } => self.failable_fallback(*failable, Some(*error), *body, ty, span),
+            Expr::Propagate(value) => self.propagate(*value, ty, span),
             // Over a generic enum's variants: the copy for this instance's `T`.
             Expr::Match { .. } if let Some(copy) = self.typed.chosen_match(expr) => {
                 self.operand(copy)

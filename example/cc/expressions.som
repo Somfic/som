@@ -206,7 +206,7 @@ impl Compiler {
                     self.load(&name);
                 }
             }
-            _ => fail(line, "expected an expression, found `" + self.text() + "`"),
+            _ => compile_error(line, "expected an expression, found `" + self.text() + "`"),
         }
     }
 
@@ -223,7 +223,7 @@ impl Compiler {
         }
         self.expect(")");
         if count > 8 {
-            fail(self.line(), "calls take at most 8 arguments");
+            compile_error(self.line(), "calls take at most 8 arguments");
         }
         let mut i = count;
         while i > 0 {

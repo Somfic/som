@@ -1,5 +1,6 @@
 //! Runs the compiler: loads a program, then hands it through each pass in order.
 
+mod api;
 mod build;
 mod error;
 mod headers;
@@ -8,6 +9,7 @@ mod libraries;
 mod load;
 mod pipeline;
 pub mod stdlib;
+pub use api::{api, api_changes};
 pub mod targets;
 mod tests;
 mod tokens;

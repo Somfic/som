@@ -1,0 +1,38 @@
+// expect: exit 3
+
+/// In the `else` of a failure with no name, `fail "…"` keeps that failure and says what was
+/// being done; failing with another value keeps it as the cause. Shown, the outermost first.
+fn digit(c: u8) -> i64! {
+    if c < 48 || c > 57 {
+        fail "not a digit";
+    }
+    (c - 48) as i64
+}
+
+fn port(text: string) -> i64! {
+    if text.len == 0 {
+        fail "no port";
+    }
+    let d = digit(text[0]) else fail "reading the port";
+    d
+}
+
+fn config(text: string) -> i64! {
+    let p = port(text) else fail "loading the config";
+    p
+}
+
+fn main() -> i32 {
+    let mut found = 0;
+    let a = config("x") else e => {
+        if "{e}" == "loading the config: reading the port: not a digit" { found = found + 1; }
+        0
+    };
+    let b = config("7") else 0;
+    if b == 7 { found = found + 1; }
+    let c = port("y") else e => {
+        if "{e}" == "reading the port: not a digit" { found = found + 1; }
+        0
+    };
+    found
+}

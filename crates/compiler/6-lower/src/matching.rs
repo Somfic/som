@@ -9,6 +9,8 @@ use som_resolve::{DefId, DefKind};
 use som_typeck::traits::builtin_operator;
 
 use super::FnBuilder;
+use super::failable::{FAILED, OK};
+use som_typeck::Failed;
 
 /// A name an arm binds, once its tests pass: to a copy (or move) of `place`, or with `by_ref`,
 /// a reference to it.
@@ -88,6 +90,33 @@ impl FnBuilder<'_, '_> {
         let ast = self.l.ast;
         let span = ast.patterns.span(id).clone();
         let info = self.typed.pattern(id).cloned().unwrap_or_default();
+        // A pattern for a `T!`'s value: it has to hold one.
+        if info.unwraps_ok {
+            self.test_variant(&place, OK, span.clone(), fail);
+            let field = self.outcome_field(ty, OK);
+            place = place.project(Projection::Field(field));
+            ty = self.outcome_inner(ty).expect("checked: only a `T!` holds a value so");
+        }
+        // `fail …`: it failed, with what the pattern after `fail` matches.
+        if let Some(failed) = info.failed {
+            self.test_variant(&place, FAILED, span.clone(), fail);
+            let field = self.outcome_field(ty, FAILED);
+            let error = place.project(Projection::Field(field));
+            let Pattern::Failed(inner) = ast.patterns[id] else {
+                unreachable!("checked: only `fail …` matches a failure")
+            };
+            match failed {
+                Failed::Any => {
+                    let error_ty = self.error_ty();
+                    self.test_pattern(inner, error, error_ty, fail, bindings);
+                }
+                Failed::Of(def) => {
+                    let (value, kind) = self.failed_with(error, def, fail, span);
+                    self.test_pattern(inner, value, kind, fail, bindings);
+                }
+            }
+            return;
+        }
         // A pattern for an optional's value: it has to hold one.
         if info.unwraps {
             let holds = Operand::Copy(place.clone().project(Projection::Field(0)));
@@ -121,7 +150,18 @@ impl FnBuilder<'_, '_> {
 
         let bool = self.l.mir.types.bool;
         match &ast.patterns[id] {
-            Pattern::Wildcard | Pattern::Variant { .. } => {}
+            // `NotFound { path }`: each field named, of a struct.
+            Pattern::Variant {
+                fields: PatternFields::Named { fields, .. },
+                ..
+            } => {
+                for (&(_, sub), &field) in fields.iter().zip(&info.fields) {
+                    let field_place = place.clone().project(Projection::Field(field));
+                    let field_ty = self.place_ty(&field_place);
+                    self.test_pattern(sub, field_place, field_ty, fail, bindings);
+                }
+            }
+            Pattern::Wildcard | Pattern::Variant { .. } | Pattern::Failed(_) => {}
             Pattern::Binding { .. } => {
                 let def = (self.l.names.pattern(id))
                     .filter(|&d| matches!(self.l.names.def(d).kind, DefKind::Binding(_)))
@@ -190,7 +230,7 @@ impl FnBuilder<'_, '_> {
         }
     }
 
-    fn test_variant(&mut self, place: &Place, variant: usize, span: som_ast::Span, fail: BlockId) {
+    pub(super) fn test_variant(&mut self, place: &Place, variant: usize, span: som_ast::Span, fail: BlockId) {
         let bool = self.l.mir.types.bool;
         let tag_place = place.clone().project(Projection::Field(0));
         let tag_ty = self.place_ty(&tag_place);
@@ -216,7 +256,7 @@ impl FnBuilder<'_, '_> {
             .to_vec()
     }
 
-    fn test(&mut self, condition: Operand, fail: BlockId, span: som_ast::Span) {
+    pub(super) fn test(&mut self, condition: Operand, fail: BlockId, span: som_ast::Span) {
         let pass = self.new_block();
         self.terminate(
             TerminatorKind::Branch {

@@ -1,0 +1,31 @@
+// expect: exit 33
+
+/// A `dyn Shape` holds a value of any type implementing `Shape`: a list of them can hold
+/// circles and squares, each answering with its own method.
+trait Shape {
+    pub fn area(&self) -> i32;
+}
+
+struct Circle { r: i32 }
+struct Square { side: i32 }
+
+impl Shape for Circle {
+    fn area(&self) -> i32 = 3 * self.r * self.r;
+}
+
+impl Shape for Square {
+    fn area(&self) -> i32 = self.side * self.side;
+}
+
+fn main() -> i32 {
+    let mut shapes: List<dyn Shape> = List::empty();
+    shapes.push(Circle { r: 2 });
+    shapes.push(Square { side: 3 });
+    shapes.push(Circle { r: 1 });
+    let mut total = 0;
+    for s in &shapes {
+        total = total + s.area();
+    }
+    // 12 + 9 + 3, and 9 more for the square's twice.
+    total + 9
+}

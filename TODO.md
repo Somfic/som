@@ -177,3 +177,35 @@ From writing `example/shooter` (a raycasting shooter, 2026-11-21), what made sha
 - [ ] Printing a `Vector` (`"{v}"`) panics in lowering ("no implementation of trait method `display_len`") rather than saying it can't be shown.
 - [ ] Captured variables as uniforms (`gpu::fragment((frag) => … g.pos …)`) would remove the uniforms structs altogether.
 - [ ] `i32` has no `min`/`max`/`clamp`.
+
+## Errors (2026-11-24, see docs/errors.md)
+
+- [ ] What closures fail with: "anything" for now. Track a closure's set like a function's,
+      and a generic function's over what its function parameters fail with.
+- [ ] `fail Wrapper<i32> { .. }`: a `fail` arm for a generic error type. The `dyn` it's
+      held in can tell them apart now; the checker's sets key kinds by struct only.
+- [ ] Taking the value out of a failure in a `fail` arm; it's lent now.
+- [ ] `e.is<T>()` on `Error`: method calls with type arguments don't parse.
+- [ ] `Display` for an error type takes `display_len` and `display`: a shorthand for "shown as
+      this string" would make error types one line.
+- [ ] Missing `fail` arms for an enum nothing matches list every variant; a long enum makes
+      a long message.
+
+## dyn (2026-11-24, see docs/dyn.md)
+
+- [ ] `Rc::new(Five {})` where a `#dyn Size` is expected: the expected type doesn't reach a
+      generic call's arguments, so `T` is `Five`. Written in two steps for now.
+- [ ] `value as dyn Trait`, to make one where nothing expects it.
+- [ ] Traits building on others with methods (`trait IndexMut: Index`), and with associated
+      types (`dyn Iterator<Item = i32>`): not allowed yet.
+- [ ] Methods taking `self` by value: could take the value off the heap; not allowed yet.
+- [ ] Asking which type a `dyn` holds (`d.is<T>()`, a `match` on it): only `fail T` arms do.
+- [ ] Calling straight to the method where only one type ever reaches a `dyn`.
+- [ ] A `T` where a `dyn Trait?` is expected isn't made one.
+
+Found along the way, not from this work:
+- [ ] `example/lisp` doesn't compile: 8× "`share` is only called through `Share`".
+- [ ] `som-cli` tests are stale: builds go to `.build/`, and clap words a bad `--emit` value
+      itself (3 failures).
+- [ ] `som_optimize` `functions_used_as_values_stay` and the LSP's
+      `a_library_used_from_two_files_lists_its_functions_once` fail.

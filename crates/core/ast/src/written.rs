@@ -13,6 +13,11 @@ impl Ast {
                 let args: Vec<String> = args.iter().map(|&a| self.type_text(a)).collect();
                 format!("{path}<{}>", args.join(", "))
             }
+            TypeExpr::Dyn { path, args } if args.is_empty() => format!("dyn {path}"),
+            TypeExpr::Dyn { path, args } => {
+                let args: Vec<String> = args.iter().map(|&a| self.type_text(a)).collect();
+                format!("dyn {path}<{}>", args.join(", "))
+            }
             TypeExpr::Pointer => "*".into(),
             TypeExpr::PointerTo(to) => format!("*{}", self.type_text(*to)),
             TypeExpr::Shared(to) => format!("#{}", self.type_text(*to)),
@@ -58,6 +63,22 @@ impl Ast {
                 TypeExpr::Fn { .. } => format!("({})?", self.type_text(*inner)),
                 _ => format!("{}?", self.type_text(*inner)),
             },
+            TypeExpr::Failable { ok, errors } => {
+                let ok = match &self.types[*ok] {
+                    TypeExpr::Unit => String::new(),
+                    TypeExpr::Fn { .. } => format!("({})", self.type_text(*ok)),
+                    _ => self.type_text(*ok),
+                };
+                let errors = match errors.as_deref() {
+                    None => String::new(),
+                    Some([one]) => self.type_text(*one),
+                    Some(many) => {
+                        let many: Vec<String> = many.iter().map(|&e| self.type_text(e)).collect();
+                        format!("({})", many.join(", "))
+                    }
+                };
+                format!("{ok}!{errors}")
+            }
             TypeExpr::Fn { params, returns } => {
                 let params: Vec<String> = params.iter().map(|&p| self.type_text(p)).collect();
                 let returns = returns
@@ -79,6 +100,7 @@ impl Ast {
             Pattern::Bool(b) => b.to_string(),
             Pattern::Str(s) => format!("{s:?}"),
             Pattern::None => "none".into(),
+            Pattern::Failed(inner) => format!("fail {}", self.pattern_text(*inner)),
             Pattern::Variant { path, fields } => match fields {
                 PatternFields::Unit => path.to_string(),
                 PatternFields::Tuple(fields) => {

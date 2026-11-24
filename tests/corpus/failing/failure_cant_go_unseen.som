@@ -1,0 +1,11 @@
+// expect: error UnusedValue
+
+/// Calling what can fail and ignoring whether it did is an error: `?` or `else` says what
+/// happens to a failure.
+fn save(n: i32) -> ! {
+    if n < 0 { fail "negative"; }
+}
+
+fn main() {
+    save(3);
+}

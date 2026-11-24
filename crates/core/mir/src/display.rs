@@ -51,7 +51,7 @@ impl Mir {
             // `I::Item` of `I`'s stand-in, which implements nothing.
             Ty::Assoc { base, index, .. } => format!("{}::{index}", self.display_ty(*base)),
             // A closure's type is a struct in MIR.
-            Ty::Param(_) | Ty::Var(_) | Ty::Add(..) | Ty::Mul(..) | Ty::Closure(..) => {
+            Ty::Param(_) | Ty::Var(_) | Ty::Add(..) | Ty::Mul(..) | Ty::Closure(..) | Ty::Dyn(..) => {
                 unreachable!("MIR only has concrete types")
             }
         }

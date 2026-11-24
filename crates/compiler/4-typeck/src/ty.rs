@@ -71,6 +71,10 @@ pub enum Ty {
     /// a call through it is a call of its body. With the type arguments of the function it's
     /// written in, whose type parameters its body can use. A struct in MIR.
     Closure(DefId, Vec<TypeId>),
+    /// `dyn Display`: a value of any type implementing the trait, with the trait's arguments.
+    /// It owns the value, on the heap, and that type's methods for the trait. A struct in
+    /// MIR: where the value is, and a function for each method.
+    Dyn(DefId, Vec<TypeId>),
     /// An inference variable. Never appears in the final `Typed` result.
     Var(u32),
 }
@@ -106,7 +110,10 @@ impl Ty {
             Ty::Array { element, len } => vec![*element, *len],
             Ty::Add(a, b) | Ty::Mul(a, b) => vec![*a, *b],
             Ty::Fn { params, ret } => params.iter().chain([ret]).copied().collect(),
-            Ty::Struct(_, args) | Ty::FnItem(_, args) | Ty::Closure(_, args) => args.clone(),
+            Ty::Struct(_, args)
+            | Ty::FnItem(_, args)
+            | Ty::Closure(_, args)
+            | Ty::Dyn(_, args) => args.clone(),
             Ty::Error
             | Ty::Unit
             | Ty::Bool
@@ -152,6 +159,7 @@ impl Ty {
             Ty::Struct(def, args) => Ty::Struct(*def, args.iter().map(|&a| f(a)).collect()),
             Ty::FnItem(def, args) => Ty::FnItem(*def, args.iter().map(|&a| f(a)).collect()),
             Ty::Closure(def, args) => Ty::Closure(*def, args.iter().map(|&a| f(a)).collect()),
+            Ty::Dyn(def, args) => Ty::Dyn(*def, args.iter().map(|&a| f(a)).collect()),
             Ty::Add(a, b) => Ty::Add(f(*a), f(*b)),
             Ty::Mul(a, b) => Ty::Mul(f(*a), f(*b)),
             leaf => leaf.clone(),
@@ -421,6 +429,17 @@ impl TypeTable {
             // Only reached on its own for a dereferenced slice, which is an error.
             Ty::Slice(element) => format!("[{}]", show(*element)),
             Ty::Range(int) => format!("Range<{}>", show(*int)),
+            // `T!`, as it's written.
+            Ty::Struct(def, args)
+                if names.lang_struct(som_lang::LangStruct::Outcome) == Some(*def)
+                    && let [ok] = args[..] =>
+            {
+                match get(ok) {
+                    Ty::Unit => "!".into(),
+                    Ty::Fn { .. } => format!("({})!", show(ok)),
+                    _ => format!("{}!", show(ok)),
+                }
+            }
             Ty::Struct(def, args) if !args.is_empty() => {
                 let args: Vec<String> = args.iter().map(|&a| show(a)).collect();
                 format!("{}<{}>", names.def(*def).name, args.join(", "))
@@ -433,6 +452,11 @@ impl TypeTable {
             // Named as in Rust's messages: `fn is_even`.
             Ty::FnItem(def, _) => format!("fn {}", names.def(*def).name),
             Ty::Closure(..) => "a closure".into(),
+            Ty::Dyn(def, args) if args.is_empty() => format!("dyn {}", names.def(*def).name),
+            Ty::Dyn(def, args) => {
+                let args: Vec<String> = args.iter().map(|&a| show(a)).collect();
+                format!("dyn {}<{}>", names.def(*def).name, args.join(", "))
+            }
             Ty::Var(v) => match vars {
                 Some(u) => u.display_var(*v, names),
                 None => "_".into(),

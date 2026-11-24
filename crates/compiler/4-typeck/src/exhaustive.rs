@@ -13,6 +13,9 @@ pub(crate) enum Ctor {
     Str(Box<str>),
     None,
     Some,
+    /// A failure with a value of this struct or enum: `fail NotFound { .. }`. There's no
+    /// listing every type something can fail with, so these never cover all failures.
+    Kind(som_resolve::DefId),
 }
 
 /// A pattern reduced to what decides which values it matches.

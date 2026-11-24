@@ -68,13 +68,13 @@ impl Compiler {
 
     mod fn expect(&mut self, s: string) {
         if !self.eat(s.share()) {
-            fail(self.line(), "expected `" + s + "`, found `" + self.text() + "`");
+            compile_error(self.line(), "expected `" + s + "`, found `" + self.text() + "`");
         }
     }
 
     mod fn name(&mut self) -> string {
         if self.kind() != Kind::Ident {
-            fail(self.line(), "expected a name, found `" + self.text() + "`");
+            compile_error(self.line(), "expected a name, found `" + self.text() + "`");
         }
         let name = self.text();
         self.pos = self.pos + 1;
@@ -86,11 +86,11 @@ impl Compiler {
     /// A type, which is always a 64-bit integer here.
     mod fn skip_type(&mut self) {
         if !self.is_type() {
-            fail(self.line(), "expected a type, found `" + self.text() + "`");
+            compile_error(self.line(), "expected a type, found `" + self.text() + "`");
         }
         self.pos = self.pos + 1;
         if self.is("*") {
-            fail(self.line(), "pointers aren't supported");
+            compile_error(self.line(), "pointers aren't supported");
         }
     }
 
@@ -132,7 +132,7 @@ impl Compiler {
         let start = match self.scopes.get(self.scopes.len - 1) { none => 0, s => *s };
         for i in start..self.locals.len {
             if self.locals[i].name == name {
-                fail(self.line(), "`" + name + "` is already declared in this block");
+                compile_error(self.line(), "`" + name + "` is already declared in this block");
             }
         }
         self.frame = self.frame + 8;
@@ -149,7 +149,7 @@ impl Compiler {
             }
         }
         if found == 0 {
-            fail(self.line(), "`" + name.share() + "` is not declared");
+            compile_error(self.line(), "`" + name.share() + "` is not declared");
         }
         found
     }

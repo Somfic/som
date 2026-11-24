@@ -1,0 +1,11 @@
+// expect: error FailInInfallible
+
+/// `fail` only fits in a function giving a `T!`.
+fn half(n: i32) -> i32 {
+    if n % 2 == 1 {
+        fail "odd";
+    }
+    n / 2
+}
+
+fn main() -> i32 = half(4);

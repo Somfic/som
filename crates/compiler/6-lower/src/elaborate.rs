@@ -358,7 +358,23 @@ impl FnBuilder<'_, '_> {
                 return;
             };
             let strukt = self.l.mir.struct_def(def, &args);
-            if strukt.variants.is_some() || self.l.mir.drop_types.contains(&ty) {
+            if self.l.mir.drop_types.contains(&ty) {
+                return;
+            }
+            // An enum's: by a `match` arm taking what its variant holds. Which variant it is
+            // isn't known here, so it's dropped whole where nothing was taken from it, as a
+            // flag says: set where it's assigned, cleared where any of it is moved out.
+            if strukt.variants.is_some() {
+                let bool = self.l.mir.types.bool;
+                let flag = *flags.entry(place.clone()).or_insert_with(|| {
+                    locals.alloc(LocalDecl {
+                        ty: bool,
+                        name: None,
+                        mutable: true,
+                        span: span.clone(),
+                    })
+                });
+                out.push(drop_statement(place.clone(), glue, Some(flag), span));
                 return;
             }
             for i in 0..strukt.fields.len() {

@@ -70,6 +70,22 @@ impl Checker<'_> {
                 return true;
             }
         }
+        // A value where a `dyn Trait` is expected, of a type implementing it: put on the heap
+        // with its type's methods.
+        if let Ty::Dyn(trait_, args) = self.u.get(expected).clone()
+            && self.makes_dyn(found, trait_, &args)
+        {
+            self.made_dyn.insert(expr, expected);
+            return true;
+        }
+        // A value where a `T!` is expected: it holds it. Whatever else makes it a `T` first.
+        if let Some(ok) = self.outcome_inner(expected)
+            && self.outcome_inner(found).is_none()
+            && self.coerce(expr, ok, found)
+        {
+            self.records.ok_wrapped.insert(expr);
+            return true;
+        }
         // `is_even` where a `fn(&i32) -> bool` is expected: its address.
         if matches!(self.u.get(expected), Ty::Fn { .. })
             && let Ty::FnItem(def, args) = self.u.shallow_ty(found).clone()
@@ -256,7 +272,7 @@ impl Checker<'_> {
                 DefKind::Struct(s) => self.ast.structs[s].copy || self.implements_copy(def),
                 _ => true,
             },
-            Ty::Ref { mutable: true, .. } => false,
+            Ty::Ref { mutable: true, .. } | Ty::Dyn(..) => false,
             Ty::Optional(inner) | Ty::Array { element: inner, .. } => self.is_copy(inner),
             // Whatever it stands for might move: only copied if it's required to be `Copy`, or
             // called, as only functions and their addresses are.

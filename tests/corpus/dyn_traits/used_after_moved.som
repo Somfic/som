@@ -1,0 +1,20 @@
+// expect: error
+
+/// A `dyn` is moved, not copied: it owns what it holds.
+trait Shape {
+    pub fn area(&self) -> i32;
+}
+
+struct Dot {}
+
+impl Shape for Dot {
+    fn area(&self) -> i32 = 0;
+}
+
+fn take(s: dyn Shape) {}
+
+fn main() {
+    let s: dyn Shape = Dot {};
+    take(s);
+    take(s);
+}

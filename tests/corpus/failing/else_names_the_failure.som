@@ -1,0 +1,16 @@
+// expect: exit 7
+
+/// `value else e => …` names why it failed: an `Error`, shown as what `fail` was given.
+fn check(n: i32) -> i32! {
+    if n < 0 {
+        fail "negative";
+    }
+    n
+}
+
+fn main() -> i32 {
+    let n = check(-3) else e => {
+        if "{e}" == "negative" { 7 } else { 1 }
+    };
+    n
+}

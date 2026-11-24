@@ -1,0 +1,15 @@
+// expect: exit 17
+
+/// A struct's pattern names its fields, `..` leaving the rest: each is matched by a pattern
+/// of its own.
+struct Point { x: i32, y: i32 }
+
+fn main() -> i32 {
+    let p = Point { x: 3, y: 4 };
+    let sum = match p { Point { x, y } => x + y };
+    let picked = match p {
+        Point { x: 3, .. } => 10,
+        Point { y, .. } => y,
+    };
+    sum + picked
+}

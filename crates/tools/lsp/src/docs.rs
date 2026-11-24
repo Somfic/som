@@ -226,6 +226,9 @@ pub(crate) fn signature_with(a: &Analysis, f: Id<Func>, subst: &[(DefId, TypeId)
         .collect();
     let ret = if matches!(a.typed.ty(sig.ret), Ty::Unit) {
         String::new()
+    } else if subst.is_empty() && a.typed.failures.sets.contains_key(&f) {
+        // What it fails with, spelled out: `-> i64!(NotFound, ParseError)`.
+        format!(" -> {}", som_typeck::failures::returns_text(&a.typed, &a.names, f))
     } else {
         format!(
             " -> {}",

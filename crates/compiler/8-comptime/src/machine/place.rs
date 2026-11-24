@@ -251,7 +251,9 @@ impl Machine<'_, '_> {
                 let value = match byte {
                     Byte::Data(b) => Value::Int(b as i128),
                     Byte::Uninit => Value::Uninit,
-                    Byte::Ptr(..) => return unsupported("a pointer's bytes in a local", span),
+                    Byte::Ptr(..) | Byte::Func(..) => {
+                        return unsupported("a pointer's bytes in a local", span);
+                    }
                 };
                 self.write(&at, u8, value, span)
             }
@@ -275,7 +277,7 @@ impl Machine<'_, '_> {
             .map(|i| match self.byte(loc, i, span)? {
                 Byte::Data(b) => Ok(b),
                 Byte::Uninit => unsupported("memory before it's written", span),
-                Byte::Ptr(..) => unsupported("a pointer's bytes as data", span),
+                Byte::Ptr(..) | Byte::Func(..) => unsupported("a pointer's bytes as data", span),
             })
             .collect()
     }

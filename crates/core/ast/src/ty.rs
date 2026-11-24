@@ -16,6 +16,19 @@ pub enum TypeExpr {
         to: Id<TypeExpr>,
     },
     Optional(Id<TypeExpr>),
+    /// `T!`: a `T`, or why there isn't one. `errors` are the types it says it fails with,
+    /// `T!ParseError` or `T!(IoError, ParseError)`; left out, `T!`, they're worked out from
+    /// what the function's body fails with. `!` alone is `()!`.
+    Failable {
+        ok: Id<TypeExpr>,
+        errors: Option<Vec<Id<TypeExpr>>>,
+    },
+    /// `dyn Display`: a value of any type implementing the trait, which one known only as the
+    /// program runs. It owns the value, on the heap, with that type's methods for the trait.
+    Dyn {
+        path: Path,
+        args: Vec<Id<TypeExpr>>,
+    },
     /// `#T`: the standard library's `Rc<T>`.
     Shared(Id<TypeExpr>),
     Array {

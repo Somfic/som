@@ -1,0 +1,10 @@
+// expect: error NotDyn
+
+/// A method giving a `Self` would give a value of a type not known where it's called.
+trait Copyable {
+    pub fn copy(&self) -> Self;
+}
+
+fn use_it(m: &dyn Copyable) {}
+
+fn main() {}

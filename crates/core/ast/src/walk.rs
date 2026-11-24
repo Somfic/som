@@ -23,6 +23,8 @@ impl Expr {
             | Expr::Unreachable
             | Expr::Out(_) => {}
             Expr::Fail(e)
+            | Expr::Raise(e)
+            | Expr::Propagate(e)
             | Expr::Not(e)
             | Expr::Neg(e)
             | Expr::BitNot(e)
@@ -47,6 +49,11 @@ impl Expr {
             | Expr::Fallback {
                 optional: a,
                 fallback: b,
+            }
+            | Expr::Recover {
+                failable: a,
+                body: b,
+                ..
             } => {
                 expr(*a);
                 expr(*b);

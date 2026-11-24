@@ -185,7 +185,12 @@ impl<'a> Emitter<'a> {
         self.line("int main(int argc, char** argv) {");
         self.line("    som_argc = argc;");
         self.line("    som_argv = argv;");
-        if self.is_unit(func.ret) {
+        if let Some(exit) = self.mir.main_exit
+            && self.mir.funcs.get(exit).is_some_and(|f| f.params.first() == Some(&func.ret))
+        {
+            // `fn main() -> !`: 0, or 1 having said why it failed.
+            self.line(format!("    return {}({call});", self.func_name(exit)));
+        } else if self.is_unit(func.ret) {
             self.line(format!("    {call};"));
             self.line("    return 0;");
         } else {

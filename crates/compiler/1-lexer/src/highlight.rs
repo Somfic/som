@@ -30,6 +30,8 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Break
         | TokenKind::Continue
         | TokenKind::Return
+        | TokenKind::Fail
+        | TokenKind::Dyn
         | TokenKind::For
         | TokenKind::In
         | TokenKind::Struct

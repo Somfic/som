@@ -35,6 +35,7 @@ impl Emitter<'_> {
             | Ty::Add(..)
             | Ty::Mul(..)
             | Ty::Closure(..)
+            | Ty::Dyn(..)
             | Ty::Assoc { .. } => {
                 unreachable!("codegen only sees checked, concrete types")
             }

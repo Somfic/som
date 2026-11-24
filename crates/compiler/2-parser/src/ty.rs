@@ -5,15 +5,41 @@ use crate::Parser;
 
 impl Parser<'_> {
     /// Parses a type annotation. A `?` after it makes the whole type optional: `&i32?` is
-    /// an optional reference, and `&(i32?)` a reference to an optional.
+    /// an optional reference, and `&(i32?)` a reference to an optional. A `!` after that
+    /// makes it failable: `User?!` fails, or gives a `User` or `none`. `!` alone is `()!`.
     pub(crate) fn parse_type(&mut self) -> Option<Id<TypeExpr>> {
         let start = self.current_span();
-        let mut ty = self.parse_type_without_optional()?;
+        let mut ty = match self.at(TokenKind::Bang) {
+            true => self.ast.types.alloc(TypeExpr::Unit, start.clone()),
+            false => self.parse_type_without_optional()?,
+        };
         while self.eat(TokenKind::Question) {
             let span = self.span_from(&start);
             ty = self.ast.types.alloc(TypeExpr::Optional(ty), span);
         }
+        if self.eat(TokenKind::Bang) {
+            let errors = self.parse_errors()?;
+            let span = self.span_from(&start);
+            ty = self.ast.types.alloc(TypeExpr::Failable { ok: ty, errors }, span);
+        }
         Some(ty)
+    }
+
+    /// What follows the `!` of `T!`: the type it fails with, `T!ParseError`, several,
+    /// `T!(IoError, ParseError)`, or nothing, for them to be worked out.
+    fn parse_errors(&mut self) -> Option<Option<Vec<Id<TypeExpr>>>> {
+        match self.peek() {
+            TokenKind::Ident => Some(Some(vec![self.parse_type_without_optional()?])),
+            TokenKind::OpenParen => {
+                self.advance();
+                let errors = self.parse_comma_list(TokenKind::CloseParen, |p| {
+                    p.parse_type_without_optional()
+                })?;
+                self.expect(TokenKind::CloseParen, "`)` after the types it fails with")?;
+                Some(Some(errors))
+            }
+            _ => Some(None),
+        }
     }
 
     pub(crate) fn at_primitive_type(&self) -> bool {
@@ -149,6 +175,13 @@ impl Parser<'_> {
                 TypeExpr::Shared(self.parse_type_without_optional()?)
             }
             TokenKind::OpenBracket => self.parse_bracket_type(&start)?,
+            // `dyn Display`: any type implementing it.
+            TokenKind::Dyn => {
+                self.advance();
+                let path = self.parse_path("a trait's name")?;
+                let args = self.parse_type_args()?;
+                TypeExpr::Dyn { path, args }
+            }
             TokenKind::Ident | TokenKind::SelfType => {
                 let path = self.parse_path("a type name")?;
                 let args = self.parse_type_args()?;
@@ -237,6 +270,7 @@ impl Parser<'_> {
             self.peek(),
             TokenKind::Ident
                 | TokenKind::SelfType
+                | TokenKind::Dyn
                 | TokenKind::Star
                 | TokenKind::Ampersand
                 | TokenKind::OpenBracket

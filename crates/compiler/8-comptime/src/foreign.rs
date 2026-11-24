@@ -298,6 +298,7 @@ impl Machine<'_, '_> {
                 Byte::Data(b) => *b,
                 Byte::Uninit => 0,
                 Byte::Ptr(loc, n) => self.address(loc, span)?.to_le_bytes()[*n as usize],
+                Byte::Func(..) => return unsupported("a function's address given to C", span),
             });
         }
         Ok(host)

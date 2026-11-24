@@ -45,6 +45,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             loops: Vec::new(),
             reads: Vec::new(),
             two_phase: Vec::new(),
+            handling: Vec::new(),
         };
         builder.current = builder.new_block();
         builder
@@ -84,8 +85,10 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         // One with no final value that should return one never gets to its end: every path
         // returns, as the type checker made sure.
         let unit = self.l.mir.types.unit;
-        let reaches_end =
-            !matches!(ast.exprs[body], Expr::Block { value: None, .. }) || ret == unit;
+        // One giving `!` gives `()` held there.
+        let reaches_end = !matches!(ast.exprs[body], Expr::Block { value: None, .. })
+            || ret == unit
+            || self.typed.is_ok_wrapped(body);
         if reaches_end {
             self.assign(Place::local(RETURN), Rvalue::Use(value), span.clone());
             for arg in (1..=func.params.len()).rev() {

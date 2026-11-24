@@ -1,0 +1,21 @@
+// expect: error NonExhaustiveMatch
+
+/// Without a `fail e` arm, a `match` on a `T!` needs one for each failure it can have: here
+/// a `Bad::Late` goes unmatched.
+enum Bad { Early, Late }
+
+impl Display for Bad {
+    prop display_len: usize = 3;
+    fn display(&self, to: *u8) { "bad".display(to); }
+}
+
+fn go(n: i32) -> i32! {
+    if n == 1 { fail Bad::Early; }
+    if n == 2 { fail Bad::Late; }
+    n
+}
+
+fn main() -> i32 = match go(1) {
+    n => n,
+    fail Bad::Early => 1,
+};

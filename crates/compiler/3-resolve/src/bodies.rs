@@ -499,7 +499,9 @@ impl<'a> Resolver<'a> {
 
     pub(crate) fn resolve_expr(&mut self, id: Id<Expr>) {
         match &self.ast.exprs[id] {
-            Expr::Fail(message) => self.resolve_expr(*message),
+            Expr::Fail(message) | Expr::Raise(message) | Expr::Propagate(message) => {
+                self.resolve_expr(*message)
+            }
             Expr::InPlace(c) => {
                 self.define_local_const(*c);
             }
@@ -633,6 +635,18 @@ impl<'a> Resolver<'a> {
                 self.resolve_expr(*scrutinee);
                 self.resolve_copies(per_type.arms.iter().map(|&(_, copy)| copy));
             }
+            // `else e => …`: `e` is only seen in what comes after the `=>`.
+            Expr::Recover {
+                failable,
+                error,
+                body,
+            } => {
+                self.resolve_expr(*failable);
+                self.in_scope(|r| {
+                    r.resolve_pattern(*error);
+                    r.resolve_expr(*body);
+                });
+            }
             // What an arm's pattern binds is only seen in that arm.
             Expr::Match { scrutinee, arms } => {
                 self.resolve_expr(*scrutinee);
@@ -678,10 +692,30 @@ impl<'a> Resolver<'a> {
                 self.names.set_pattern(id, def);
                 self.bind(name, def);
             }
+            // `fail NotFound { path }`: a struct's name, as nothing matched says whose it is.
+            Pattern::Failed(inner) => {
+                if let Pattern::Variant { path, .. } = &self.ast.patterns[*inner]
+                    && path.segments.len() == 1
+                    && let Some(def) = self.resolve_path(path, Expect::Type)
+                {
+                    self.names.set_pattern(*inner, def);
+                }
+                self.resolve_pattern(*inner);
+            }
             Pattern::Variant { path, fields } => {
                 // `Shape::Circle(r)`; a bare `Circle(r)` is found from the type matched.
                 if path.segments.len() > 1
                     && let Some(def) = self.resolve_path(path, Expect::Value)
+                {
+                    self.names.set_pattern(id, def);
+                }
+                // `Point { x, y }`: a struct's fields, if a struct in scope has that name.
+                if let [only] = &path.segments[..]
+                    && matches!(fields, PatternFields::Named { .. })
+                    && self.names.pattern(id).is_none()
+                    && let Some(def) = self.lookup(&only.name, Expect::Type)
+                    && let DefKind::Struct(s) = self.names.def(def).kind
+                    && !self.ast.structs[s].is_enum()
                 {
                     self.names.set_pattern(id, def);
                 }
@@ -791,6 +825,12 @@ impl<'a> Resolver<'a> {
                 }
                 args.iter().for_each(|&arg| self.resolve_type(arg));
             }
+            TypeExpr::Dyn { path, args } => {
+                if let Some(def) = self.resolve_path(path, Expect::Trait) {
+                    self.names.set_type(id, def);
+                }
+                args.iter().for_each(|&arg| self.resolve_type(arg));
+            }
             TypeExpr::Reference { to, .. }
             | TypeExpr::PointerTo(to)
             | TypeExpr::Optional(to)
@@ -810,6 +850,10 @@ impl<'a> Resolver<'a> {
                 if let Some(returns) = returns {
                     self.resolve_type(*returns);
                 }
+            }
+            TypeExpr::Failable { ok, errors } => {
+                self.resolve_type(*ok);
+                errors.iter().flatten().for_each(|&e| self.resolve_type(e));
             }
             TypeExpr::Unit
             | TypeExpr::Primitive(_)

@@ -42,6 +42,9 @@ pub struct Mir {
     pub gpu: HashSet<FuncId>,
     /// The structs the language gives meaning to, by which they are.
     pub lang_structs: HashMap<DefId, som_lang::LangStruct>,
+    /// For `fn main() -> !`: what turns what it gives into the program's exit code, saying
+    /// why it failed if it did.
+    pub main_exit: Option<FuncId>,
     struct_index: HashMap<(DefId, Vec<TypeId>), usize>,
 }
 
@@ -60,6 +63,7 @@ impl Mir {
             size_of: HashMap::new(),
             lang_structs: HashMap::new(),
             gpu: HashSet::new(),
+            main_exit: None,
             struct_index: HashMap::new(),
         }
     }

@@ -1,0 +1,19 @@
+// expect: error CantFailWith
+
+/// A `fail` arm for a type what's matched can't fail with is never reached.
+struct NotFound { path: string }
+impl Display for NotFound {
+    prop display_len: usize = 9;
+    fn display(&self, to: *u8) { "not found".display(to); }
+}
+
+fn half(n: i32) -> i32! {
+    if n % 2 == 1 { fail "odd"; }
+    n / 2
+}
+
+fn main() -> i32 = match half(4) {
+    n => n,
+    fail NotFound { path } => 0,
+    fail e => 1,
+};

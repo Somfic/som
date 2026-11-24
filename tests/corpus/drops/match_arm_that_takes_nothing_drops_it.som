@@ -1,0 +1,28 @@
+// expect: exit 21
+
+/// A `match` whose arms take what a variant holds on some paths and not others: where an arm
+/// takes nothing, the value matched is still dropped after.
+struct Noisy { id: i32, log: *i32 }
+
+impl Drop for Noisy {
+    fn drop(self: &mut Noisy) { self.log.put(0, self.log.take(0) * 10 + self.id); }
+}
+
+enum Holder { Empty, One(Noisy, i32) }
+
+fn make(id: i32, code: i32, at: *i32) -> Holder = Holder::One(Noisy { id, log: at }, code);
+
+fn keep(n: Noisy) -> i32 = n.id;
+
+fn main() -> i32 {
+    let mut log = 0;
+    let at = &mut log as *i32;
+    // The arm matching `0` takes nothing: the `Noisy` is dropped after the `match`.
+    let a = match make(2, 0, at) { Holder::Empty => 0, Holder::One(_, 0) => 5, Holder::One(n, _) => keep(n) };
+    // The last arm takes it, and `keep` drops it.
+    let b = match make(1, 3, at) { Holder::Empty => 0, Holder::One(_, 0) => 5, Holder::One(n, _) => keep(n) };
+    if a != 5 || b != 1 {
+        return 99;
+    }
+    log
+}

@@ -132,7 +132,7 @@ impl Lisp {
         n
     }
 
-    fn fail(&mut self, message: string) -> usize {
+    fn give_up(&mut self, message: string) -> usize {
         if self.error == none {
             self.error = message;
         }
@@ -171,7 +171,7 @@ impl Lisp {
     fn lookup(&mut self, env: usize, name: string) -> usize {
         let found = self.find(env, &name);
         if found == none {
-            return self.fail("`" + name + "` is not defined");
+            return self.give_up("`" + name + "` is not defined");
         }
         let mut value = NIL;
         match self.envs.get(found) {
@@ -211,7 +211,7 @@ impl Lisp {
 
     fn read(&mut self, tokens: &List<string>, pos: &mut usize) -> usize {
         let token = match tokens.get(*pos) {
-            none => { return self.fail("unexpected end of input"); }
+            none => { return self.give_up("unexpected end of input"); }
             t => t.share(),
         };
         *pos = *pos + 1;
@@ -219,7 +219,7 @@ impl Lisp {
             let mut items: List<usize> = List::empty();
             loop {
                 let next = match tokens.get(*pos) {
-                    none => { return self.fail("missing `)`"); }
+                    none => { return self.give_up("missing `)`"); }
                     t => t.share(),
                 };
                 if next == ")" {
@@ -232,7 +232,7 @@ impl Lisp {
                     let tail = self.read(tokens, pos);
                     let close = match tokens.get(*pos) { none => "", t => t.share() };
                     if close != ")" {
-                        return self.fail("expected `)` after the `.` part of a list");
+                        return self.give_up("expected `)` after the `.` part of a list");
                     }
                     *pos = *pos + 1;
                     let mut list = tail;
@@ -250,7 +250,7 @@ impl Lisp {
             }
         }
         if token == ")" {
-            return self.fail("unexpected `)`");
+            return self.give_up("unexpected `)`");
         }
         if token == "'" {
             let quoted = self.read(tokens, pos);
@@ -330,7 +330,7 @@ impl Lisp {
                     let value = self.eval(self.car(self.cdr(args)), env);
                     let found = self.find(env, &name);
                     if found == none {
-                        return self.fail("can't `set!` `" + name + "`: it's not defined");
+                        return self.give_up("can't `set!` `" + name + "`: it's not defined");
                     }
                     self.define(found, name, value);
                     return value;
@@ -386,7 +386,7 @@ impl Lisp {
                     env = self.bind(params, values, closed);
                     x = self.begin(body, env);
                 }
-                _ => { return self.fail("`" + self.show(f) + "` is not a function"); }
+                _ => { return self.give_up("`" + self.show(f) + "` is not a function"); }
             }
         }
     }
@@ -414,7 +414,7 @@ impl Lisp {
         let mut v = values;
         while self.kind(p) == Kind::Cons {
             if self.kind(v) != Kind::Cons {
-                self.fail(arity(self.length(params), self.length(values)));
+                self.give_up(arity(self.length(params), self.length(values)));
                 return env;
             }
             self.define(env, self.text(self.car(p)), self.car(v));
@@ -424,7 +424,7 @@ impl Lisp {
         if self.kind(p) == Kind::Sym {
             self.define(env, self.text(p), v);
         } else if v != NIL {
-            self.fail(arity(self.length(params), self.length(values)));
+            self.give_up(arity(self.length(params), self.length(values)));
         }
         env
     }
@@ -439,7 +439,7 @@ impl Lisp {
             let mut rest = args;
             while rest != NIL {
                 if self.kind(self.car(rest)) != Kind::Num {
-                    return self.fail("`" + name + "` takes numbers, not `" + self.show(self.car(rest)) + "`");
+                    return self.give_up("`" + name + "` takes numbers, not `" + self.show(self.car(rest)) + "`");
                 }
                 rest = self.cdr(rest);
             }
@@ -449,7 +449,7 @@ impl Lisp {
             while rest != NIL {
                 let n = self.number(self.car(rest));
                 if (name == "/" || name == "mod") && n == 0 {
-                    return self.fail("division by zero");
+                    return self.give_up("division by zero");
                 }
                 if name == "+" { total = total + n; }
                 else if name == "-" { total = total - n; }
@@ -462,7 +462,7 @@ impl Lisp {
         }
         if name == "=" || name == "<" || name == ">" || name == "<=" || name == ">=" {
             if self.kind(a) != Kind::Num || self.kind(b) != Kind::Num {
-                return self.fail("`" + name + "` compares two numbers");
+                return self.give_up("`" + name + "` compares two numbers");
             }
             let x = self.number(a);
             let y = self.number(b);
@@ -474,7 +474,7 @@ impl Lisp {
         if name == "cons" { return self.cons(a, b); }
         if name == "car" || name == "cdr" {
             if self.kind(a) != Kind::Cons {
-                return self.fail("`" + name + "` of `" + self.show(a) + "`, which isn't a pair");
+                return self.give_up("`" + name + "` of `" + self.show(a) + "`, which isn't a pair");
             }
             return if name == "car" { self.car(a) } else { self.cdr(a) };
         }
@@ -495,7 +495,7 @@ impl Lisp {
             println("");
             return NIL;
         }
-        self.fail("unknown builtin `" + name + "`")
+        self.give_up("unknown builtin `" + name + "`")
     }
 
     /// The same atom: numbers by value, symbols and strings by text, anything else by identity.

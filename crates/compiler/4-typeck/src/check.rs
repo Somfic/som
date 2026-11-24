@@ -14,7 +14,9 @@ mod compile_time;
 mod construct;
 mod conversions;
 mod diagnose;
+mod dyns;
 mod expr;
+mod failing;
 mod field;
 mod items;
 mod lower_types;
@@ -52,6 +54,8 @@ pub(crate) struct Checker<'a> {
     sigs: Vec<Signature>,
     type_args: HashMap<Id<Expr>, Vec<TypeId>>,
     sliced: HashMap<Id<Expr>, TypeId>,
+    /// Values made a `dyn Trait` where used → that type.
+    made_dyn: HashMap<Id<Expr>, TypeId>,
     /// Values that become a struct through its `From`: the trait's `from` and its type arguments.
     conversions: HashMap<Id<Expr>, (DefId, Vec<TypeId>)>,
     records: Records,
@@ -94,6 +98,9 @@ pub(crate) struct Checker<'a> {
     expected_calls: HashMap<TypeId, TypeId>,
     /// The anonymous functions whose bodies are being checked, innermost last.
     open_closures: Vec<Id<Expr>>,
+    /// Each `dyn Trait` written, and where: whether the trait can be one is checked once
+    /// every signature is known.
+    dyns: Vec<(DefId, Span)>,
 }
 
 /// What the expression about to be inferred is to its caller: set just before `infer`, which
@@ -158,6 +165,7 @@ impl<'a> Checker<'a> {
             sigs: Vec::new(),
             type_args: HashMap::new(),
             sliced: HashMap::new(),
+            made_dyn: HashMap::new(),
             conversions: HashMap::new(),
             records: Records::default(),
             impls: Vec::new(),
@@ -182,6 +190,7 @@ impl<'a> Checker<'a> {
             signatures: HashMap::new(),
             expected_calls: HashMap::new(),
             open_closures: Vec::new(),
+            dyns: Vec::new(),
         };
         if let Some(def) = names.lang_struct(som_lang::LangStruct::String) {
             checker.u.table.text = checker.u.table.intern(Ty::Struct(def, Vec::new()));

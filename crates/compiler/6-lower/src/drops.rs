@@ -117,6 +117,14 @@ impl Lowerer<'_> {
 
     fn struct_shape(&mut self, ty: TypeId, def: DefId, args: &[TypeId]) -> Option<Shape> {
         self.make_structs_in(ty);
+        // A `dyn` drops its value through the function it holds for it.
+        if self.dyn_of(ty).is_some() {
+            return Some(Shape::Struct {
+                own: Some(self.dyn_glue(ty)),
+                common: Vec::new(),
+                variants: Vec::new(),
+            });
+        }
         let own = self.drop_impl(ty);
         let strukt = self.mir.struct_def(def, args);
         let fields: Vec<TypeId> = strukt.fields.iter().map(|(_, t)| *t).collect();

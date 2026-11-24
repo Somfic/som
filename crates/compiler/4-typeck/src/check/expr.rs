@@ -132,6 +132,13 @@ impl Checker<'_> {
                 self.deferred.unreachables.push(ty);
                 ty
             }
+            Expr::Raise(value) => self.infer_raise(id, *value),
+            Expr::Propagate(value) => self.infer_propagate(id, *value),
+            Expr::Recover {
+                failable,
+                error,
+                body,
+            } => self.infer_recover(*failable, *error, *body),
             Expr::Int(_) => self.u.fresh(VarKind::Int),
             Expr::Float(_) => self.u.fresh(VarKind::Float),
             Expr::Bool(_) => bool,
@@ -178,6 +185,10 @@ impl Checker<'_> {
                     self.hints.expected = Some(self.u.intern(Ty::Optional(expected)));
                 }
                 let ty = self.infer_optional(*optional);
+                // `parse(text) else 0`: a `T!`'s `T`, or the fallback.
+                if let Some(ok) = self.outcome_inner(ty) {
+                    return self.infer_failable_fallback(*optional, ok, *fallback);
+                }
                 let inner = self.optional_inner(ty, *optional);
                 let from = self.span(*optional);
                 self.expect(*fallback, inner, Some(from));

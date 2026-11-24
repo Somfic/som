@@ -1,0 +1,12 @@
+// expect: exit 9
+
+/// A `T!` can be worked out while compiling, failure and all.
+fn third(n: i32) -> i32! {
+    if n % 3 != 0 { fail "not a multiple of 3"; }
+    n / 3
+}
+
+@const A: i32 = third(18) else 0;
+@const B: i32 = third(10) else 3;
+
+fn main() -> i32 = A + B;

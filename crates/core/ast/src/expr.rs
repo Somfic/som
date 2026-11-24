@@ -7,6 +7,11 @@ pub enum Expr {
     Type(Id<TypeExpr>),
     /// `@fail(message)`: gets no value, like `Unreachable`.
     Fail(Id<Expr>),
+    /// `fail value`: the function gives up, failing with `value`, in a function giving a `T!`.
+    /// In the `else` of a failure, `fail "reading the port"` says what was being done.
+    Raise(Id<Expr>),
+    /// `value?`: what the `T!` `value` holds, or if it failed, the function fails with it.
+    Propagate(Id<Expr>),
     /// `@const f(x)`: a constant with no name ([`crate::Const::in_place`]).
     InPlace(Id<crate::Const>),
     Int(i128),
@@ -99,6 +104,13 @@ pub enum Expr {
         optional: Id<Expr>,
         fallback: Id<Expr>,
     },
+    /// `parse(text) else e => …`: what the `T!` `failable` holds, or if it failed, `body`,
+    /// with `error`, a name, bound to why.
+    Recover {
+        failable: Id<Expr>,
+        error: Id<Pattern>,
+        body: Id<Expr>,
+    },
     Match {
         scrutinee: Id<Expr>,
         arms: Vec<Arm>,
@@ -136,6 +148,10 @@ pub enum Pattern {
     Str(Box<str>),
     /// Any other pattern matched against an optional matches the value it holds.
     None,
+    /// `fail e`, `fail ParseError::Empty`: a `T!` that failed, with what it failed with. A
+    /// name takes the `Error`; anything else matches the value of its type `fail` was given.
+    /// Any other pattern matched against a `T!` matches the `T` it holds.
+    Failed(Id<Pattern>),
     Variant {
         path: Path,
         fields: PatternFields,

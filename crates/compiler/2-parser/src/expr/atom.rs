@@ -37,6 +37,11 @@ impl Parser<'_> {
                 self.parse_leave(&start)?
             }
             TokenKind::Builtin => self.parse_builtin_value(&start)?,
+            // `fail value`: the function fails with `value`.
+            TokenKind::Fail => {
+                self.advance();
+                Expr::Raise(self.parse_expr()?)
+            }
             TokenKind::Dot => return self.parse_self_dot(),
             TokenKind::SelfValue => Expr::Var(Path {
                 segments: vec![self.parse_self()],

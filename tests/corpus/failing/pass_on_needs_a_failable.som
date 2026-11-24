@@ -1,0 +1,11 @@
+// expect: error NotFailable
+
+/// `?` takes apart a `T!`; an optional is given a fallback with `else` instead.
+fn find(n: i32) -> i32? = if n > 0 { n } else { none };
+
+fn twice(n: i32) -> i32! {
+    let v = find(n)?;
+    v * 2
+}
+
+fn main() -> i32 = twice(3) else 0;

@@ -254,6 +254,12 @@ impl Dumper<'_> {
             Expr::Hole => self.line("hole"),
             Expr::Type(_) => self.line("type"),
             Expr::Fail(message) => self.node("@fail", |d| d.expr(*message)),
+            Expr::Raise(value) => self.node("fail", |d| d.expr(*value)),
+            Expr::Propagate(value) => self.node("?", |d| d.expr(*value)),
+            Expr::Recover { failable, body, .. } => self.node("recover", |d| {
+                d.expr(*failable);
+                d.expr(*body);
+            }),
             Expr::InPlace(c) => {
                 let value = self.ast.consts[*c].value;
                 self.node("@const", |d| d.expr(value))

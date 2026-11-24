@@ -1,0 +1,29 @@
+// expect: exit 0
+
+/// `dyn Display` is `Display`: written into text, it's shown as what it holds is. Numbers
+/// and text are what they'd usually be.
+struct Point { x: i32, y: i32 }
+
+impl Display for Point {
+    prop display_len: usize = "({self.x}, {self.y})".len;
+    fn display(&self, to: *u8) { "({self.x}, {self.y})".display(to); }
+}
+
+fn main() -> i32 {
+    let mut things: List<dyn Display> = List::empty();
+    things.push(Point { x: 1, y: 2 });
+    things.push(42);
+    things.push("text");
+    things.push(2.5);
+    let mut shown = "";
+    for t in &things {
+        shown = "{shown}[{t}]";
+    }
+    if shown != "[(1, 2)][42][text][2.5]" {
+        return 1;
+    }
+    if things.len > 0 && things[0].to_string() != "(1, 2)" {
+        return 2;
+    }
+    0
+}

@@ -9,7 +9,7 @@ use crate::error::TypeError;
 use crate::exhaustive::{Ctor, Pat, useful};
 use crate::ty::{Ty, TypeId};
 use crate::unify::VarKind;
-use crate::{CommonField, PatternInfo};
+use crate::{CommonField, FailureArms, PatternInfo};
 
 pub(super) fn holds(kind: VariantKind) -> &'static str {
     match kind {
@@ -247,7 +247,17 @@ impl Checker<'_> {
 
         if rows.iter().all(Option::is_some) && *self.u.shallow_ty(matched) != Ty::Error {
             let pats: Vec<Pat> = rows.into_iter().flatten().collect();
-            self.check_coverage(id, arms, &pats, matched);
+            // A `T!`'s failures are checked once what it can fail with is worked out: here,
+            // only the values it can hold.
+            let assumed = match self.outcome_inner(matched) {
+                Some(_) => {
+                    let arms_found = self.failure_arms_of(arms, &pats);
+                    self.records.failure_arms.insert(id, arms_found);
+                    vec![Pat::Ctor(Ctor::Variant(1), vec![Pat::Wild])]
+                }
+                None => Vec::new(),
+            };
+            self.check_coverage(id, arms, &pats, matched, &assumed);
         }
 
         match result {
@@ -259,7 +269,15 @@ impl Checker<'_> {
         }
     }
 
-    fn check_coverage(&mut self, id: Id<Expr>, arms: &[Arm], pats: &[Pat], matched: TypeId) {
+    /// `assumed`: patterns taken to match, for what's missing, though no arm has them.
+    fn check_coverage(
+        &mut self,
+        id: Id<Expr>,
+        arms: &[Arm],
+        pats: &[Pat],
+        matched: TypeId,
+        assumed: &[Pat],
+    ) {
         let (unreachable, missing) = {
             let mut space = |ty: TypeId| self.ctors(ty);
             let mut seen: Vec<Vec<Pat>> = Vec::new();
@@ -271,6 +289,7 @@ impl Checker<'_> {
                 }
                 seen.push(row);
             }
+            seen.extend(assumed.iter().map(|p| vec![p.clone()]));
             let mut missing = Vec::new();
             while missing.len() < MISSING_SHOWN
                 && let Some(witness) = useful(&seen, &[Pat::Wild], &[matched], &mut space)
@@ -305,6 +324,56 @@ impl Checker<'_> {
             span,
             fix,
         });
+    }
+
+    /// What the arms of a `match` on a `T!` say of failures: whether one takes any, and for
+    /// each struct or enum with arms of its own, whether they take all of its values.
+    fn failure_arms_of(&mut self, arms: &[Arm], pats: &[Pat]) -> FailureArms {
+        let mut found = FailureArms::default();
+        let mut rows: Vec<(DefId, Id<Pattern>, Vec<Vec<Pat>>)> = Vec::new();
+        for (arm, pat) in arms.iter().zip(pats) {
+            match pat {
+                Pat::Wild => found.catch_all = true,
+                Pat::Ctor(Ctor::Variant(1), inner) => match inner.first() {
+                    Some(Pat::Ctor(Ctor::Kind(def), value)) => {
+                        let value = value.first().cloned().unwrap_or(Pat::Wild);
+                        match rows.iter_mut().find(|(d, ..)| d == def) {
+                            Some((_, _, of)) => of.push(vec![value]),
+                            None => rows.push((*def, arm.pattern, vec![vec![value]])),
+                        }
+                    }
+                    _ => found.catch_all = true,
+                },
+                _ => {}
+            }
+        }
+        for (def, first, mut of) in rows {
+            let ty = self.u.intern(Ty::Struct(def, Vec::new()));
+            let mut missing = Vec::new();
+            loop {
+                let mut space = |ty: TypeId| self.ctors(ty);
+                let Some(witness) = useful(&of, &[Pat::Wild], &[ty], &mut space) else {
+                    break;
+                };
+                if missing.len() >= MISSING_SHOWN {
+                    break;
+                }
+                let name = &self.names.def(def).name;
+                let shown = match &witness[0] {
+                    Pat::Wild => format!("{name} {{ .. }}"),
+                    // A variant, named with its enum's name: nothing says which enum it is.
+                    pat @ Pat::Ctor(Ctor::Variant(_), _) => format!("{name}::{}", self.render(pat, ty)),
+                    pat => self.render(pat, ty),
+                };
+                missing.push(format!("fail {shown}"));
+                of.push(witness);
+            }
+            found.kinds.push((def, missing.is_empty(), first));
+            if !missing.is_empty() {
+                found.missing.push((def, missing));
+            }
+        }
+        found
     }
 
     fn missing_arms_fix(&self, id: Id<Expr>, missing: &[String]) -> Option<Fix> {
@@ -367,6 +436,19 @@ impl Checker<'_> {
             Pat::Ctor(Ctor::Int(n), _) => n.to_string(),
             Pat::Ctor(Ctor::Str(s), _) => format!("{s:?}"),
             Pat::Ctor(Ctor::None, _) => "none".into(),
+            Pat::Ctor(Ctor::Kind(def), _) => format!("{} {{ .. }}", self.names.def(*def).name),
+            // A `T!`'s: a pattern for the `T`, or `fail …`.
+            Pat::Ctor(Ctor::Variant(0), inner) if let Some(ok) = self.outcome_inner(ty) => {
+                self.render(&inner[0], ok)
+            }
+            Pat::Ctor(Ctor::Variant(1), inner) if self.outcome_inner(ty).is_some() => {
+                match inner.first() {
+                    Some(Pat::Ctor(Ctor::Kind(def), _)) => {
+                        format!("fail {} {{ .. }}", self.names.def(*def).name)
+                    }
+                    _ => "fail e".into(),
+                }
+            }
             // A pattern for an optional's value is written as one for the value.
             Pat::Ctor(Ctor::Some, inner) => match *self.u.shallow_ty(ty) {
                 Ty::Optional(value) => self.render(&inner[0], value),
@@ -406,7 +488,7 @@ impl Checker<'_> {
     /// `by_ref`: matched through a reference (`&mut` or not), so bindings borrow.
     /// `none_matched`: an earlier arm matched `none`, so a binding binds the value an optional
     /// holds.
-    fn check_pattern(
+    pub(super) fn check_pattern(
         &mut self,
         id: Id<Pattern>,
         ty: TypeId,
@@ -422,6 +504,12 @@ impl Checker<'_> {
         if *self.u.get(shallow) == Ty::Error {
             self.bind_all(id, error);
             return Pat::Wild;
+        }
+        // Against a `T!`: `fail …`, or a pattern for the `T`.
+        if let Some(ok) = self.outcome_inner(shallow)
+            && !self.names_outcome_variant(id)
+        {
+            return self.outcome_pattern(id, ok, by_ref, none_matched);
         }
         let optional = match *self.u.get(shallow) {
             Ty::Optional(inner) => Some(inner),
@@ -505,10 +593,26 @@ impl Checker<'_> {
                 }
                 Pat::Ctor(Ctor::None, Vec::new())
             }
+            // `NotFound { path }`: a struct's fields, as after `fail`.
+            Pattern::Variant { fields, .. }
+                if let Some(def) = self.names.pattern(id)
+                    && let DefKind::Struct(s) = self.names.def(def).kind
+                    && !self.ast.structs[s].is_enum() =>
+            {
+                self.unwrapped(ty, optional, &mut info, |c, ty, info| {
+                    c.struct_pattern(id, ty, s, fields, by_ref, info)
+                })
+            }
             Pattern::Variant { path, fields } => {
                 self.unwrapped(ty, optional, &mut info, |c, ty, info| {
                     c.variant_pattern(id, ty, path.name(), fields, by_ref, info)
                 })
+            }
+            // Only a `T!` fails.
+            Pattern::Failed(inner) => {
+                self.pattern_mismatch(id, ty);
+                self.bind_all(*inner, error);
+                Pat::Wild
             }
         };
         let _ = span;
@@ -746,7 +850,7 @@ impl Checker<'_> {
     }
 
     /// Gives every name pattern `id` binds type `ty`, after an error.
-    fn bind_all(&mut self, id: Id<Pattern>, ty: TypeId) {
+    pub(super) fn bind_all(&mut self, id: Id<Pattern>, ty: TypeId) {
         self.records.patterns.entry(id).or_default();
         match &self.ast.patterns[id] {
             Pattern::Binding { .. } => {
@@ -757,7 +861,94 @@ impl Checker<'_> {
                 }
             }
             Pattern::Variant { fields, .. } => self.bind_fields(fields, ty),
+            Pattern::Failed(inner) => self.bind_all(*inner, ty),
             _ => {}
+        }
+    }
+
+    /// `NotFound { path }`: struct `s`'s fields, each by name, `..` leaving the rest.
+    fn struct_pattern(
+        &mut self,
+        id: Id<Pattern>,
+        ty: TypeId,
+        s: Id<Struct>,
+        fields: &PatternFields,
+        by_ref: Option<bool>,
+        info: &mut PatternInfo,
+    ) -> Pat {
+        let error = self.u.table.error;
+        let def = self.names.strukt(s);
+        let strukt = &self.ast.structs[s];
+        // Its type arguments, whatever `ty` says they are.
+        let args: Vec<TypeId> = (0..strukt.generics.len()).map(|_| self.u.fresh(VarKind::Any)).collect();
+        let wanted = self.u.intern(Ty::Struct(def, args.clone()));
+        if self.u.unify(ty, wanted).is_err() {
+            self.pattern_mismatch(id, ty);
+            self.bind_fields(fields, error);
+            return Pat::Wild;
+        }
+        let subst = self.struct_subst(s, &args);
+        let field_tys: Vec<TypeId> = (0..strukt.fields.len())
+            .map(|i| self.substitute(self.records.structs[s.id][i], &subst))
+            .collect();
+        let PatternFields::Named { fields: given, rest } = fields else {
+            if !matches!(fields, PatternFields::Unit) || !strukt.fields.is_empty() {
+                self.errors.push(TypeError::WrongVariantForm {
+                    name: strukt.name.name.to_string(),
+                    holds: "fields",
+                    form: format!("{} {{ .. }}", strukt.name.name),
+                    span: self.ast.patterns.span(id).clone(),
+                });
+                self.bind_fields(fields, error);
+            }
+            return Pat::Wild;
+        };
+        let mut seen = vec![false; field_tys.len()];
+        let mut refutable = false;
+        for (field, pat) in given {
+            match strukt.fields.iter().position(|f| f.name.name == field.name) {
+                Some(i) if !seen[i] => {
+                    seen[i] = true;
+                    let sub = self.check_pattern(*pat, field_tys[i], by_ref, false);
+                    refutable |= !matches!(sub, Pat::Wild);
+                    info.fields.push(i);
+                }
+                found => {
+                    match found {
+                        Some(_) => self.errors.push(TypeError::DuplicateField {
+                            field: field.name.to_string(),
+                            span: field.span.clone(),
+                        }),
+                        None => self.errors.push(TypeError::UnknownField {
+                            ty: strukt.name.name.to_string(),
+                            field: field.name.to_string(),
+                            available: (strukt.fields.iter()).map(|f| f.name.name.to_string()).collect(),
+                            props: Vec::new(),
+                            methods: Vec::new(),
+                            span: field.span.clone(),
+                        }),
+                    }
+                    self.bind_all(*pat, error);
+                    info.fields.push(usize::MAX);
+                }
+            }
+        }
+        let missing: Vec<String> = (strukt.fields.iter().zip(&seen))
+            .filter(|(_, seen)| !**seen)
+            .map(|(f, _)| f.name.name.to_string())
+            .collect();
+        if !rest && !missing.is_empty() {
+            self.errors.push(TypeError::MissingFieldPatterns {
+                variant: strukt.name.name.to_string(),
+                fields: missing,
+                span: self.ast.patterns.span(id).clone(),
+            });
+        }
+        // Names for its fields match any; anything more might not, which isn't followed
+        // further: it's taken to leave some values.
+        match refutable {
+            false => Pat::Wild,
+            true => Pat::Ctor(Ctor::Kind(def), Vec::new()),
         }
     }
 }

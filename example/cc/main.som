@@ -20,7 +20,7 @@ extern {
 }
 
 /// Reports an error on standard error, so it doesn't end up in the assembly, and stops.
-mod fn fail(line: i64, message: string) {
+mod fn compile_error(line: i64, message: string) {
     let text = "error: line " + line.to_string() + ": " + message + "\n";
     write(2, text.c_str, text.len);
     exit(1);

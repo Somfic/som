@@ -44,7 +44,7 @@ impl<S: Settled + ?Sized> Flow<'_, S> {
             return self.expr_leaves(copy);
         }
         match &self.ast.exprs[expr] {
-            Expr::Unreachable | Expr::Fail(_) => true,
+            Expr::Unreachable | Expr::Fail(_) | Expr::Raise(_) => true,
             Expr::Block { stmts, value } => {
                 self.leaves(stmts) || value.is_some_and(|v| self.expr_leaves(v))
             }

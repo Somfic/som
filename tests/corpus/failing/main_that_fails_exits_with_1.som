@@ -1,0 +1,10 @@
+// expect: exit 1
+
+/// `fn main() -> !`: when it fails, it says why and the program exits with 1.
+fn open(path: string) -> i32! {
+    fail "{path}: no such file";
+}
+
+fn main() -> ! {
+    let f = open("missing.txt")?;
+}

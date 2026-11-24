@@ -231,6 +231,10 @@ impl Checker<'_> {
             Some(value) => self.expect(value, ret, from),
             None => {
                 let unit = self.u.table.unit;
+                // `return;` of a `-> !`: done, without failing.
+                if self.outcome_inner(ret).is_some_and(|ok| self.u.unify(ok, unit).is_ok()) {
+                    return;
+                }
                 if self.u.unify(ret, unit).is_err() {
                     self.errors.push(TypeError::ReturnWithoutValue {
                         ty: self.describe(ret),
@@ -292,6 +296,16 @@ impl Checker<'_> {
             return;
         }
         let span = self.span(expr);
+        // `save(path);` of a `save` that can fail: the failure would go unseen.
+        if let Some(t) = ty
+            && self.outcome_inner(t).is_some()
+        {
+            self.errors.push(TypeError::UnusedValue {
+                kind: Unused::Failure,
+                span,
+            });
+            return;
+        }
         let kind = match &self.ast.exprs[expr] {
             Expr::Binary {
                 op: BinOp::Equals, ..

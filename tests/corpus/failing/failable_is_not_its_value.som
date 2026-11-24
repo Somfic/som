@@ -1,0 +1,9 @@
+// expect: error FailureUnhandled
+
+/// A `T!` isn't a `T`: `?` or `else` gets the value out.
+fn half(n: i32) -> i32! = n / 2;
+
+fn main() -> i32 {
+    let n: i32 = half(4);
+    n
+}

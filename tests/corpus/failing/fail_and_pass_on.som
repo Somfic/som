@@ -1,0 +1,21 @@
+// expect: exit 42
+
+/// `fail value` gives up with `value`; `value?` gives what a `T!` holds, or passes its
+/// failure on.
+fn half(n: i32) -> i32! {
+    if n % 2 == 1 {
+        fail "{n} is odd";
+    }
+    n / 2
+}
+
+fn quarter(n: i32) -> i32! {
+    let h = half(n)?;
+    half(h)
+}
+
+fn main() -> i32 {
+    let a = quarter(40) else 0;
+    let b = quarter(6) else 32;
+    a + b
+}

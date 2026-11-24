@@ -1,0 +1,32 @@
+// expect: exit 6
+
+/// `dyn` works in code run while compiling.
+trait Weight {
+    pub fn weight(&self) -> i32;
+}
+
+struct Light {}
+struct Heavy {}
+
+impl Weight for Light {
+    fn weight(&self) -> i32 = 1;
+}
+
+impl Weight for Heavy {
+    fn weight(&self) -> i32 = 5;
+}
+
+fn total() -> i32 {
+    let mut all: List<dyn Weight> = List::empty();
+    all.push(Light {});
+    all.push(Heavy {});
+    let mut sum = 0;
+    for w in &all {
+        sum = sum + w.weight();
+    }
+    sum
+}
+
+@const TOTAL: i32 = total();
+
+fn main() -> i32 = TOTAL;

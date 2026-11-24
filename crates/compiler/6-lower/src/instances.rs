@@ -112,6 +112,10 @@ impl<'a> Lowerer<'a> {
     }
 
     pub(super) fn instance(&mut self, func: Id<Func>, type_args: Vec<TypeId>) -> FuncId {
+        // A trait's method, for a `dyn`: through the function it holds for it.
+        if let Some(id) = self.dyn_call(func, &type_args) {
+            return id;
+        }
         // A trait's method, for a known `Self`: the method its implementation has.
         if let Some((method, args)) = self.dispatch(func, &type_args) {
             return self.instance(method, args);
@@ -244,6 +248,16 @@ impl<'a> Lowerer<'a> {
             self.requested_at.insert(id, at.clone());
         }
         self.instances.insert(key, id);
+        // `fn main() -> !`: C's `main` turns what it gives into an exit code.
+        if is_entry
+            && let Some(outcome) = self.names.lang_struct(som_lang::LangStruct::Outcome)
+            && matches!(self.mir.types.get(ret), Ty::Struct(def, _) if *def == outcome)
+            && let Some(exit) = self.names.lang_func(som_lang::LangFunc::MainExit)
+            && let DefKind::Func(exit) = self.names.def(exit).kind
+        {
+            let exit = self.instance(exit, Vec::new());
+            self.mir.main_exit = Some(exit);
+        }
         id
     }
 
@@ -396,15 +410,16 @@ pub(super) fn internal_function(
     }
 }
 
-/// `ty` with each closure's type the struct it is in MIR: one holding its captures.
+/// `ty` with each closure's type the struct it is in MIR, one holding its captures, and each
+/// `dyn Trait` the struct it is, one holding its value's methods.
 fn closures_as_structs(types: &mut TypeTable, ty: TypeId) -> TypeId {
     let t = types.get(ty).clone();
-    if t.children().is_empty() && !matches!(t, Ty::Closure(..)) {
+    if t.children().is_empty() && !matches!(t, Ty::Closure(..) | Ty::Dyn(..)) {
         return ty;
     }
     let inner = t.map_children(|child| closures_as_structs(types, child));
     let inner = match inner {
-        Ty::Closure(def, args) => Ty::Struct(def, args),
+        Ty::Closure(def, args) | Ty::Dyn(def, args) => Ty::Struct(def, args),
         other => other,
     };
     types.intern(inner)

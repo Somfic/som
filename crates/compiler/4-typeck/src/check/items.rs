@@ -35,6 +35,7 @@ impl Checker<'_> {
         self.resolve_pending_calls();
         self.check_overloads();
         self.check_called();
+        self.check_dyns();
         self.check_obligations();
         self.check_deferred();
     }
@@ -377,6 +378,12 @@ impl Checker<'_> {
             self.default_numbers(ret);
         }
         let ret = self.u.shallow(ret);
+        // `fn main() -> !`: failing, it says why and exits with 1.
+        if let Some(ok) = self.outcome_inner(ret)
+            && *self.u.shallow_ty(ok) == Ty::Unit
+        {
+            return;
+        }
         let fine = match self.u.var_kind(ret) {
             // An integer nothing has decided; or what isn't known at all, reported elsewhere.
             Some(VarKind::Int | VarKind::Any) => true,
@@ -443,9 +450,10 @@ impl Checker<'_> {
             if self.records.per_instance.contains(&id) && !instance {
                 return;
             }
-            // Some path gets to the end with nothing to return.
+            // Some path gets to the end with nothing to return: fine for `()`, and `!`.
             let unit = self.u.table.unit;
-            if self.u.unify(ret, unit).is_err() {
+            let fails_or_unit = self.outcome_inner(ret).is_some_and(|ok| self.u.unify(ok, unit).is_ok());
+            if !fails_or_unit && self.u.unify(ret, unit).is_err() {
                 self.errors.push(TypeError::MissingReturn {
                     ty: self.describe(ret),
                     span: self.ast.exprs.span(body).last_char(),
@@ -593,6 +601,10 @@ impl Checker<'_> {
             .into_iter()
             .map(|(expr, ty)| (expr, self.u.finish(ty, &mut ignore)))
             .collect();
+        let made_dyn = std::mem::take(&mut self.made_dyn)
+            .into_iter()
+            .map(|(expr, ty)| (expr, self.u.finish(ty, &mut ignore)))
+            .collect();
         let closures = std::mem::take(&mut self.records.closures);
         self.records.closures = (closures.into_iter())
             .map(|(expr, mut sig)| {
@@ -614,9 +626,11 @@ impl Checker<'_> {
             conversions,
             type_args,
             sliced,
+            made_dyn,
             impls: self.impls,
             const_values: self.known,
             records: self.records,
+            failures: Default::default(),
         };
         (typed, self.errors)
     }

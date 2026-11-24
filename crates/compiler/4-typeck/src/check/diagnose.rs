@@ -81,6 +81,18 @@ impl Checker<'_> {
             self.exprs[expr.id] = Some(self.u.table.error);
             return;
         }
+        // `parse(text)` where an `i32` goes: say how to get the value out.
+        if let Some(ok) = self.outcome_inner(found)
+            && self.outcome_inner(expected).is_none()
+            && self.u.could_fit(expected, ok)
+        {
+            self.errors.push(TypeError::FailureUnhandled {
+                ty: self.describe(found),
+                span: self.span(expr),
+                expected_from,
+            });
+            return;
+        }
         let fix = (self.deref_fix(expr, expected, found))
             .or_else(|| self.fallback_fix(expr, expected, found));
         let span = self.span(expr);

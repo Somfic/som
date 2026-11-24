@@ -8,8 +8,10 @@ mod call;
 mod caller;
 mod closures;
 mod drops;
+mod dyns;
 mod elaborate;
 mod expr;
+mod failable;
 mod failure;
 mod instances;
 mod interp;
@@ -144,6 +146,16 @@ struct Lowerer<'a> {
     trait_methods: HashMap<Id<Func>, (DefId, usize)>,
     /// `None` for a type with nothing to drop.
     drop_glues: HashMap<TypeId, Option<FuncId>>,
+    /// A `dyn`'s method, by the method and its type arguments, `Self` the `dyn`: calls the
+    /// function the `dyn` holds for it.
+    dyn_calls: HashMap<(Id<Func>, Vec<TypeId>), FuncId>,
+    /// Each type's function a `dyn` holds for dropping it, by the type.
+    dyn_drops: HashMap<TypeId, FuncId>,
+    /// Each type's functions a `dyn` holds for the trait's methods, by the method and its
+    /// type arguments, `Self` the type.
+    dyn_methods_of: HashMap<(Id<Func>, Vec<TypeId>), FuncId>,
+    /// The number a `dyn` holds for each type it's made of.
+    type_numbers: HashMap<TypeId, i128>,
     /// Each closure's body, by the closure and its function's type arguments.
     closure_instances: HashMap<(Id<som_ast::Expr>, Vec<TypeId>), FuncId>,
     /// Lowering generic functions with stand-ins, for the borrow checker: a trait's method
@@ -173,6 +185,10 @@ impl<'a> Lowerer<'a> {
             owners: HashMap::new(),
             trait_methods: HashMap::new(),
             drop_glues: HashMap::new(),
+            dyn_calls: HashMap::new(),
+            dyn_drops: HashMap::new(),
+            dyn_methods_of: HashMap::new(),
+            type_numbers: HashMap::new(),
             closure_instances: HashMap::new(),
             stand_ins: false,
         }
@@ -430,6 +446,13 @@ impl<'a> Lowerer<'a> {
         {
             self.closure_struct(*def, args.clone());
         }
+        if let Ty::Struct(def, args) = &t
+            && let DefKind::Trait(_) = self.names.def(*def).kind
+            && concrete(&self.mir.types, ty)
+            && !self.mir.has_struct(*def, args)
+        {
+            self.dyn_struct(*def, args.clone());
+        }
         if let Ty::Struct(def, args) = t
             && !args.is_empty()
             && concrete(&self.mir.types, ty)
@@ -512,7 +535,7 @@ struct LoopTargets {
 fn concrete(types: &TypeTable, ty: TypeId) -> bool {
     match types.get(ty) {
         // A closure's type is the type checker's: in MIR, it's the struct it becomes.
-        Ty::Param(_) | Ty::Var(_) | Ty::Error | Ty::Closure(..) => false,
+        Ty::Param(_) | Ty::Var(_) | Ty::Error | Ty::Closure(..) | Ty::Dyn(..) => false,
         t => t.children().into_iter().all(|child| concrete(types, child)),
     }
 }
@@ -544,4 +567,7 @@ struct FnBuilder<'l, 'a> {
     /// Places the source read, with where, not yet claimed by the statement using them.
     reads: Vec<(Place, Span)>,
     two_phase: Vec<Local>,
+    /// In the `else` of a `T!` that failed, given no name, innermost last: the failure, which
+    /// a `fail` there keeps.
+    handling: Vec<Local>,
 }

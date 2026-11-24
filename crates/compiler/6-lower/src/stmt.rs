@@ -116,6 +116,7 @@ impl FnBuilder<'_, '_> {
     }
 
     fn return_stmt(&mut self, value: Option<Id<Expr>>, span: Span) {
+        let bare = value.is_none();
         let value = match value {
             Some(value) => self.operand(value),
             None => {
@@ -123,7 +124,13 @@ impl FnBuilder<'_, '_> {
                 self.constant(ConstKind::Unit, unit)
             }
         };
-        self.assign(Place::local(RETURN), Rvalue::Use(value), span.clone());
+        // `return;` of a `-> !`: it gives `()`, held.
+        let ret = self.locals[RETURN].ty;
+        let given = match self.outcome_inner(ret) {
+            Some(ok) if bare && ok == self.l.mir.types.unit => self.ok_wrapped(value, ok),
+            _ => Rvalue::Use(value),
+        };
+        self.assign(Place::local(RETURN), given, span.clone());
         self.end_scopes_from(0, span.clone());
         for arg in (1..=self.param_count()).rev() {
             self.end_local(Id::new(arg), span.clone());

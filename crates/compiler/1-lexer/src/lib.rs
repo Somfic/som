@@ -13,7 +13,7 @@ pub use text::{TextPart, text_parts};
 // in step with them.
 pub const KEYWORDS: &[&str] = &[
     "fn", "let", "mut", "if", "else", "struct", "impl", "extern", "loop", "while", "break",
-    "continue", "return", "for", "in", "use", "out", "true", "false", "none", "enum", "match",
+    "continue", "return", "fail", "dyn", "for", "in", "use", "out", "true", "false", "none", "enum", "match",
     "trait", "type", "prop", "pub", "mod", "and", "or", "as", "self", "Self",
 ];
 
@@ -204,6 +204,10 @@ pub enum TokenKind {
     Continue,
     #[token("return")]
     Return,
+    #[token("fail")]
+    Fail,
+    #[token("dyn")]
+    Dyn,
     #[token("for")]
     For,
     #[token("in")]
@@ -241,6 +245,8 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Break => write!(f, "break"),
             TokenKind::Continue => write!(f, "continue"),
             TokenKind::Return => write!(f, "return"),
+            TokenKind::Fail => write!(f, "fail"),
+            TokenKind::Dyn => write!(f, "dyn"),
             TokenKind::For => write!(f, "for"),
             TokenKind::In => write!(f, "in"),
             TokenKind::Primitive(p) => write!(f, "{}", p.name()),

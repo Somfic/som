@@ -1,0 +1,14 @@
+// expect: exit 0
+
+/// `fn main() -> !` that gets to its end gives nothing, and the program exits with 0.
+fn twice(n: i32) -> i32! {
+    if n > 100 { fail "too big"; }
+    n * 2
+}
+
+fn main() -> ! {
+    let n = twice(4)?;
+    if n != 8 {
+        fail "wrong";
+    }
+}

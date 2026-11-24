@@ -83,8 +83,8 @@ impl Parser<'_> {
         self.eat(TokenKind::Comma) || ends_in_block
     }
 
-    /// `_`, `name`, `3`, `true`, `"yes"`, `none`, `Circle(r)`, `Rect { w, h }` or
-    /// `Shape::Empty`.
+    /// `_`, `name`, `3`, `true`, `"yes"`, `none`, `Circle(r)`, `Rect { w, h }`,
+    /// `Shape::Empty` or `fail e`.
     pub(crate) fn parse_pattern(&mut self) -> Option<Id<Pattern>> {
         let start = self.current_span();
         let pattern = match self.peek() {
@@ -98,6 +98,11 @@ impl Parser<'_> {
             TokenKind::None => {
                 self.advance();
                 Pattern::None
+            }
+            // `fail e`, `fail ParseError::Empty`: what a `T!` failed with.
+            TokenKind::Fail => {
+                self.advance();
+                Pattern::Failed(self.parse_pattern()?)
             }
             TokenKind::Mut => {
                 self.advance();

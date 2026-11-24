@@ -1,0 +1,11 @@
+// expect: error NotDyn
+
+/// A method with type parameters of its own would need one function for each type it's
+/// used with: a `dyn` holds one.
+trait Mapper {
+    pub fn map<T>(&self, x: T) -> T;
+}
+
+fn use_it(m: &dyn Mapper) {}
+
+fn main() {}

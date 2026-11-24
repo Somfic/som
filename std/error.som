@@ -1,0 +1,81 @@
+use som::c;
+use som::mem;
+
+/// Why something failed: what a `T!` holds instead of a `T`. It holds the value `fail` was
+/// given, whatever its type, so a `match` can take it apart: `fail NotFound { path } => …`.
+/// Shown, it reads as the whole story: what was being done, outermost first, then what went
+/// wrong, `reading the port: not a digit`.
+pub struct Error {
+    /// What it failed with.
+    what: dyn Display,
+    /// What was being done, innermost first: `else fail "reading the port"` adds a line.
+    context: List<string>,
+    /// The failure this one took the place of, when a `fail` in its `else` gave another.
+    cause: List<Error>,
+}
+
+/// What `T!` is: a `T`, or why there isn't one.
+pub enum Outcome<T> {
+    Ok(T),
+    Failed(Error),
+}
+
+/// `fail value`: an `Error` holding `value`.
+fn error_of<E: Display>(value: E) -> Error = Error {
+    what: value,
+    context: List::empty(),
+    cause: List::empty(),
+};
+
+/// `fail "reading the port"` in the `else` of a failure: the same failure, with a line more
+/// saying what was being done.
+fn error_context(error: Error, text: string) -> Error {
+    let mut error = error;
+    error.context.push(text);
+    error
+}
+
+/// `fail value` of another type in the `else` of a failure: `value` fails in its place, and
+/// the failure is kept as why.
+fn error_caused<E: Display>(cause: Error, value: E) -> Error {
+    let mut error = error_of(value);
+    error.cause.push(cause);
+    error
+}
+
+/// What `fn main() -> !` exits with: 0, or 1 having said why it failed.
+fn main_exit(outcome: Outcome<()>) -> i32 {
+    match outcome {
+        Outcome::Ok(done) => 0,
+        Outcome::Failed(error) => {
+            let text = "error: {error}";
+            c::fflush(mem::null());
+            @if WINDOWS {
+                c::printf("%s\n", text.c_str);
+            } else {
+                c::dprintf(2, "%s\n", text.c_str);
+            }
+            1
+        }
+    }
+}
+
+impl Error {
+    /// The whole story, as it's shown.
+    fn text(&self) -> string {
+        let mut text = self.what.to_string();
+        for i in 0..self.cause.len {
+            text = "{text}: {self.cause[i]}";
+        }
+        // Innermost first, so the outermost ends up in front.
+        for i in 0..self.context.len {
+            text = "{self.context[i]}: {text}";
+        }
+        text
+    }
+}
+
+impl Display for Error {
+    prop display_len: usize = self.text().len;
+    fn display(&self, to: *u8) { self.text().display(to); }
+}

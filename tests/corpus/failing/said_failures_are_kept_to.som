@@ -1,0 +1,28 @@
+// expect: error FailsUndeclared
+
+/// A function saying what it fails with, `T!ParseError`, fails with nothing else.
+struct Timeout { secs: i32 }
+
+impl Display for Timeout {
+    prop display_len: usize = 7;
+    fn display(&self, to: *u8) { "timeout".display(to); }
+}
+
+enum ParseError { Empty }
+
+impl Display for ParseError {
+    prop display_len: usize = 5;
+    fn display(&self, to: *u8) { "empty".display(to); }
+}
+
+fn wait(secs: i32) -> ! {
+    if secs > 10 { fail Timeout { secs }; }
+}
+
+fn parse(text: string) -> i64!ParseError {
+    if text.len == 0 { fail ParseError::Empty; }
+    wait(20)?;
+    1
+}
+
+fn main() -> i32 = (parse("1") else 0) as i32;

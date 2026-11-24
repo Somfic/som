@@ -1,0 +1,12 @@
+// expect: error Mismatch
+
+/// Only a value of a type implementing the trait can be one.
+trait Shape {
+    pub fn area(&self) -> i32;
+}
+
+struct Line {}
+
+fn main() {
+    let s: dyn Shape = Line {};
+}

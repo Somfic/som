@@ -17,7 +17,13 @@ impl Checker<'_> {
     /// `by_value`: what `id` gives is taken, rather than borrowed or assigned to.
     fn moves_in(&mut self, id: Id<Expr>, by_value: bool) {
         match &self.ast.exprs[id] {
-            Expr::Fail(message) => self.moves_in(*message, true),
+            Expr::Fail(message) | Expr::Raise(message) | Expr::Propagate(message) => {
+                self.moves_in(*message, true)
+            }
+            Expr::Recover { failable, body, .. } => {
+                self.moves_in(*failable, true);
+                self.moves_in(*body, by_value);
+            }
             // Worked out on its own: it moves nothing of the function's.
             Expr::InPlace(_)
             | Expr::Hole

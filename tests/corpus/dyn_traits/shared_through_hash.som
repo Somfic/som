@@ -1,0 +1,20 @@
+// expect: exit 5
+
+/// `#dyn Trait`: one value, shared by its copies.
+use som::mem;
+trait Size {
+    pub fn size(&self) -> i32;
+}
+
+struct Five {}
+
+impl Size for Five {
+    fn size(&self) -> i32 = 5;
+}
+
+fn main() -> i32 {
+    let five: dyn Size = Five {};
+    let a: #dyn Size = mem::Rc::new(five);
+    let b = a;
+    b.size()
+}

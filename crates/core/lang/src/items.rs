@@ -131,6 +131,10 @@ named_enum! {
         /// Items on the GPU, in a storage buffer: what a compute kernel fills, and a shader
         /// can read.
         Buffer = "Buffer",
+        /// What `T!` is: `Ok(T)`, or `Failed(Error)`.
+        Outcome = "Outcome",
+        /// Why a `T!` failed: the value `fail` was given, whatever its type.
+        Error = "Error",
     }
 }
 
@@ -152,6 +156,14 @@ named_enum! {
         SizeOf = "size_of",
         /// `gpu::kernel(f)`: a compute kernel's source in WGSL, made while compiling.
         Kernel = "kernel",
+        /// `fail value`: `value` made an `Error`.
+        ErrorOf = "error_of",
+        /// `fail "text"` in the `else` of a failure: the failure, saying what was being done.
+        ErrorContext = "error_context",
+        /// `fail value` in the `else` of a failure: `value` in its place, with it as the cause.
+        ErrorCaused = "error_caused",
+        /// What `fn main() -> !` exits with.
+        MainExit = "main_exit",
     }
 }
 

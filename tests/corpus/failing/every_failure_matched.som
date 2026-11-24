@@ -1,0 +1,44 @@
+// expect: exit 33
+
+/// What a function can fail with is worked out from its body, through what it passes on: a
+/// `match` with an arm for each type needs no `fail e`. `else fail "…"` says what was being
+/// done, and fails with what it's the `else` of.
+struct NotFound { path: string }
+
+impl Display for NotFound {
+    prop display_len: usize = 9;
+    fn display(&self, to: *u8) { "not found".display(to); }
+}
+
+enum ParseError { Empty, BadDigit { at: usize } }
+
+impl Display for ParseError {
+    prop display_len: usize = 3;
+    fn display(&self, to: *u8) { "bad".display(to); }
+}
+
+fn read(path: string) -> string! {
+    if path == "" { fail NotFound { path }; }
+    path
+}
+
+fn parse(text: string) -> i64! {
+    if text == "empty" { fail ParseError::Empty; }
+    if text == "bad" { fail ParseError::BadDigit { at: 3 }; }
+    7
+}
+
+fn load(path: string) -> i64! {
+    let text = read(path)?;
+    let n = parse(text) else fail "reading the number";
+    n
+}
+
+fn score(path: string) -> i64 = match load(path) {
+    n => n,
+    fail NotFound { path } => 10,
+    fail ParseError::Empty => 1,
+    fail ParseError::BadDigit { at } => at as i64 * 5,
+};
+
+fn main() -> i32 = (score("") + score("empty") + score("bad") + score("ok") ) as i32;

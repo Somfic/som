@@ -1,0 +1,20 @@
+// expect: exit 21
+
+/// `T?!` fails, or gives a `T` or `none`: `?` takes off the failure, `else` then the `none`.
+fn find(n: i32) -> i32?! {
+    if n < 0 { fail "negative"; }
+    if n == 0 { return none; }
+    n
+}
+
+fn sum(a: i32, b: i32) -> i32! {
+    let x = find(a)? else 10;
+    let y = find(b)? else 10;
+    x + y
+}
+
+fn main() -> i32 {
+    let s = sum(0, 1) else 0;
+    let t = sum(-1, 5) else 10;
+    s + t
+}

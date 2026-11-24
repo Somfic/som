@@ -1,0 +1,27 @@
+// expect: exit 42
+
+/// Which type a `dyn` holds can depend on what happens as the program runs: a function can
+/// give either.
+trait Greeting {
+    pub fn code(&self) -> i32;
+}
+
+struct Hello {}
+struct Bye { times: i32 }
+
+impl Greeting for Hello {
+    fn code(&self) -> i32 = 2;
+}
+
+impl Greeting for Bye {
+    fn code(&self) -> i32 = 10 * self.times;
+}
+
+fn pick(formal: bool) -> dyn Greeting {
+    if formal {
+        return Bye { times: 4 };
+    }
+    Hello {}
+}
+
+fn main() -> i32 = pick(true).code() + pick(false).code();

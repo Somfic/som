@@ -28,6 +28,13 @@ pub fn shake(mir: &mut Mir) {
 fn used_funcs(mir: &Mir, entry: FuncId) -> HashSet<FuncId> {
     let mut used = HashSet::from([entry]);
     let mut todo = vec![entry];
+    // Called by C's `main` with what `fn main() -> !` gives.
+    if let Some(exit) = mir.main_exit
+        && mir.func(entry).ret == mir.func(exit).params[0]
+    {
+        used.insert(exit);
+        todo.push(exit);
+    }
     while let Some(id) = todo.pop() {
         let Some(body) = &mir.func(id).body else {
             continue;

@@ -1,0 +1,10 @@
+// expect: error NotDyn
+
+/// A method with no `self` can't be called on a value whose type isn't known.
+trait Make {
+    pub fn make() -> i32;
+}
+
+fn use_it(m: &dyn Make) {}
+
+fn main() {}

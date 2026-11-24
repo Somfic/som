@@ -21,6 +21,7 @@ impl Checker<'_> {
             }
             TypeExpr::Primitive(p) => Ty::from_primitive(*p),
             TypeExpr::Pointer => Ty::Pointer,
+            TypeExpr::Dyn { path, args } => self.lower_dyn(id, path, args),
             TypeExpr::PointerTo(to) => Ty::Ptr(self.lower(*to)),
             TypeExpr::Named { args, .. } => match self
                 .names
@@ -86,6 +87,18 @@ impl Checker<'_> {
                 }
             }
             TypeExpr::Optional(inner) => Ty::Optional(self.lower(*inner)),
+            // `T!` is the standard library's `Outcome<T>`. The types it says it fails with are
+            // checked to be types; what's done with them is up to the function giving it.
+            TypeExpr::Failable { ok, errors } => {
+                let ok = self.lower(*ok);
+                for &error in errors.iter().flatten() {
+                    self.lower(error);
+                }
+                match self.names.lang_struct(som_lang::LangStruct::Outcome) {
+                    Some(outcome) => Ty::Struct(outcome, vec![ok]),
+                    None => Ty::Error,
+                }
+            }
             // `#T` is the standard library's `Rc<T>`; without it loaded, there's nothing it is.
             TypeExpr::Shared(inner) => {
                 let inner = self.lower(*inner);

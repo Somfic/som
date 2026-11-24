@@ -459,6 +459,15 @@ pub(super) fn diagnostic(error: &TypeError) -> Diagnostic {
                         assignment.clone(),
                     ))
             }
+            Unused::Failure => Diagnostic::error("this can fail, and nothing looks at whether it did")
+                .with_label(Label::primary(span.clone(), "a failure here would go unseen"))
+                .with_hint(msg![
+                    code("?"),
+                    " passes it on; ",
+                    code("else …"),
+                    " says what to do instead"
+                ])
+                .with_fix(Fix::replace(msg!["pass it on: ", code("?")], span.after(), "?")),
             Unused::Value => Diagnostic::error("this value is unused")
                 .with_label(Label::primary(
                     span.clone(),

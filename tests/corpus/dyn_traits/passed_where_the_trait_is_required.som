@@ -1,0 +1,19 @@
+// expect: exit 7
+
+/// A `dyn Trait` implements the trait, so a generic function requiring it takes one.
+trait Score {
+    pub fn score(&self) -> i32;
+}
+
+struct Seven {}
+
+impl Score for Seven {
+    fn score(&self) -> i32 = 7;
+}
+
+fn twice<T: Score>(x: &T) -> i32 = x.score() + x.score();
+
+fn main() -> i32 {
+    let s: dyn Score = Seven {};
+    twice(&s) - s.score()
+}

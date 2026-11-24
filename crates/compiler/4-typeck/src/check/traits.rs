@@ -473,6 +473,11 @@ impl Checker<'_> {
         match self.u.get(ty) {
             Ty::Error => true,
             Ty::Param(def) => self.bound_has(*def, trait_),
+            // A `dyn Display` is `Display`, through the methods it holds.
+            Ty::Dyn(def, given) => {
+                *def == trait_
+                    && (given.iter().zip(args)).all(|(&g, &a)| self.u.shallow(g) == self.u.shallow(a))
+            }
             _ => {
                 let u = &self.u;
                 find_impl(&self.impls, &u.table, trait_, ty, args, &|t| u.shallow(t)).is_some()
@@ -754,6 +759,7 @@ impl Checker<'_> {
         };
         let traits: Vec<DefId> = match self.u.get(base).clone() {
             Ty::Param(def) => self.names.bounds(def).to_vec(),
+            Ty::Dyn(def, _) => vec![def],
             Ty::Struct(owner, _) if self.names.method(owner, &method.name).is_none() => {
                 implemented(self)
             }

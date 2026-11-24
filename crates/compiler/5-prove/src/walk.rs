@@ -209,7 +209,16 @@ impl Prover<'_> {
 
     pub(crate) fn expr(&mut self, id: Id<Expr>) {
         match &self.ast.exprs[id] {
-            Expr::Fail(message) => self.expr(*message),
+            Expr::Fail(message) | Expr::Raise(message) | Expr::Propagate(message) => {
+                self.expr(*message)
+            }
+            // Only when it failed.
+            Expr::Recover { failable, body, .. } => {
+                self.expr(*failable);
+                let mark = self.facts.mark();
+                self.expr(*body);
+                self.facts.forget_since(mark);
+            }
             // A constant's value isn't proven here, wherever it's written.
             Expr::InPlace(_)
             | Expr::Hole

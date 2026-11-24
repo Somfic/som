@@ -190,6 +190,32 @@ pub(super) fn diagnostic(error: &TypeError) -> Diagnostic {
             Diagnostic::error(msg![ty.clone(), " can't implement ", code(trait_)])
                 .with_label(Label::primary(span.clone(), "its operators are built in"))
         }
+        TypeError::NotDyn {
+            trait_,
+            why,
+            span,
+            member,
+        } => {
+            let d = Diagnostic::error(msg![code(format!("dyn {trait_}")), " can't be a type"])
+                .with_label(Label::primary(span.clone(), why.clone()));
+            let d = match member {
+                Some(at) => d.with_label(Label::secondary(at.clone(), "this is why")),
+                None => d,
+            };
+            d.with_hint(msg![
+                "a ",
+                code("dyn"),
+                "'s type is known only as the program runs, so each of the trait's methods has to take ",
+                code("&self"),
+                " or ",
+                code("&mut self"),
+                ", and nothing else of type ",
+                code("Self"),
+                "; a generic function, ",
+                code(format!("fn f<T: {trait_}>")),
+                ", takes any type that implements it"
+            ])
+        }
         _ => unreachable!("not one of traits and their implementations"),
     }
 }

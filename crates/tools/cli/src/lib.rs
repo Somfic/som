@@ -77,6 +77,17 @@ enum Command {
         #[command(flatten)]
         check: CheckArgs,
     },
+    /// Print what a program or library lets others use, with what each function that can
+    /// fail fails with spelled out
+    Api {
+        /// The program or library: a .som file, or a directory of them
+        path: PathBuf,
+        /// Compare with what FILE says instead, as `som api` wrote it, and fail if they differ
+        #[arg(long, value_name = "FILE")]
+        check: Option<PathBuf>,
+        #[command(flatten)]
+        args: CheckArgs,
+    },
     /// Start the language server, for editors (speaks LSP over stdin and stdout)
     Lsp {
         /// Accepted because editors pass it; stdin and stdout are the only transport
@@ -315,6 +326,7 @@ pub fn main(args: impl IntoIterator<Item = String>) -> ExitCode {
             som_lsp::serve();
             ExitCode::SUCCESS
         }
+        Command::Api { path, check, args } => api(&path, check.as_deref(), &args),
         #[cfg(debug_assertions)]
         Command::GenerateLibc { cc } => generate_libc(cc),
         Command::Check { path, check } => {
@@ -335,6 +347,51 @@ pub fn main(args: impl IntoIterator<Item = String>) -> ExitCode {
             } else {
                 ExitCode::FAILURE
             }
+        }
+    }
+}
+
+/// `som api`: prints what `path` lets others use, or with `check`, compares it with what that
+/// file says and says what changed.
+fn api(path: &Path, check: Option<&Path>, args: &CheckArgs) -> ExitCode {
+    let target = Target::host();
+    let output = default_output(path, &target);
+    let Some(checked) = compile(path, args, &target, &output, false) else {
+        return ExitCode::FAILURE;
+    };
+    let now = som_driver::api(&checked.ast, &checked.names, &checked.typed, path);
+    let Some(file) = check else {
+        print!("{now}");
+        return ExitCode::SUCCESS;
+    };
+    let before = match std::fs::read_to_string(file) {
+        Ok(text) => text,
+        Err(e) => {
+            ui::error(msg!["can't read ", message::path(file.display()), ": ", e.to_string()]);
+            return ExitCode::FAILURE;
+        }
+    };
+    match som_driver::api_changes(&before, &now) {
+        None => {
+            ui::success("unchanged", message::path(file.display()));
+            ExitCode::SUCCESS
+        }
+        Some((gone, added)) => {
+            ui::error(msg![
+                "what ",
+                message::path(path.display()),
+                " lets others use isn't what ",
+                message::path(file.display()),
+                " says"
+            ]);
+            for line in &gone {
+                println!("- {line}");
+            }
+            for line in &added {
+                println!("+ {line}");
+            }
+            println!("to keep it, write it out again: som api {} > {}", path.display(), file.display());
+            ExitCode::FAILURE
         }
     }
 }

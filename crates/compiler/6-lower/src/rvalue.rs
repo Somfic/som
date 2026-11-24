@@ -50,6 +50,7 @@ impl FnBuilder<'_, '_> {
             Expr::BitNot(inner) => Rvalue::Not(self.number(*inner)),
             Expr::Unreachable => self.failing(expr, None),
             Expr::Fail(message) => self.failing(expr, Some(*message)),
+            Expr::Raise(value) => self.raise(expr, *value),
             Expr::Neg(inner) => self.negated(expr, *inner),
             Expr::Borrow {
                 mutable,

@@ -1,0 +1,29 @@
+// expect: exit 12
+
+/// `T!(A, B)` says it fails with either; failing with one of them is fine, and a `match`
+/// with an arm for each needs no other.
+struct A { n: i32 }
+impl Display for A {
+    prop display_len: usize = 1;
+    fn display(&self, to: *u8) { "a".display(to); }
+}
+
+struct B { n: i32 }
+impl Display for B {
+    prop display_len: usize = 1;
+    fn display(&self, to: *u8) { "b".display(to); }
+}
+
+fn pick(n: i32) -> i32!(A, B) {
+    if n == 1 { fail A { n }; }
+    if n == 2 { fail B { n: n * 5 }; }
+    0
+}
+
+fn value(n: i32) -> i32 = match pick(n) {
+    v => v,
+    fail A { n } => n,
+    fail B { n } => n + 1,
+};
+
+fn main() -> i32 = value(0) + value(1) + value(2);

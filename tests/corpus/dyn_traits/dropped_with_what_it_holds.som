@@ -1,0 +1,39 @@
+// expect: exit 3
+
+/// A `dyn` owns what it holds: dropping it drops that, with its own `Drop`.
+use som::mem;
+
+trait Named {
+    pub fn name(&self) -> i32;
+}
+
+struct Loud { drops: *i32 }
+
+impl Named for Loud {
+    fn name(&self) -> i32 = 1;
+}
+
+impl Drop for Loud {
+    fn drop(&mut self) {
+        let n = *self.drops.at(0);
+        self.drops.put(0, n + 1);
+    }
+}
+
+struct Holder { named: dyn Named }
+
+fn main() -> i32 {
+    let mut drops = mem::null<i32>();
+    drops.resize(1);
+    drops.put(0, 0);
+    {
+        let a: dyn Named = Loud { drops };
+        let b = Holder { named: Loud { drops } };
+        let moved = b;
+    }
+    let c: dyn Named = Loud { drops };
+    drop(c);
+    let n = *drops.at(0);
+    drops.free();
+    n
+}

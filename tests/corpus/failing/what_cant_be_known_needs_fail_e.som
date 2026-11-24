@@ -1,0 +1,20 @@
+// expect: error NonExhaustiveMatch
+
+/// Through a function's address, what a `T!` can fail with isn't known: `fail e` takes it.
+struct Oops { code: i32 }
+impl Display for Oops {
+    prop display_len: usize = 4;
+    fn display(&self, to: *u8) { "oops".display(to); }
+}
+
+fn go(n: i32) -> i32! {
+    if n > 1 { fail Oops { code: n }; }
+    n
+}
+
+fn call(f: fn(i32) -> i32!, n: i32) -> i32 = match f(n) {
+    v => v,
+    fail Oops { code } => code,
+};
+
+fn main() -> i32 = call(go, 3);

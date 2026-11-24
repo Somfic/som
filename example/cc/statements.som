@@ -31,7 +31,7 @@ impl Compiler {
         // A prototype, for a function in C's library or further down.
         if self.eat(";") { return; }
         if params.len > 8 {
-            fail(self.line(), "`" + name + "` has more than 8 parameters");
+            compile_error(self.line(), "`" + name + "` has more than 8 parameters");
         }
 
         self.function = name.share();
@@ -69,7 +69,7 @@ impl Compiler {
         self.expect("{{");
         self.enter_scope();
         while !self.is("}}") {
-            if self.kind() == Kind::End { fail(self.line(), "expected `}}`"); }
+            if self.kind() == Kind::End { compile_error(self.line(), "expected `}}`"); }
             self.statement();
         }
         self.expect("}}");
@@ -111,7 +111,7 @@ impl Compiler {
             self.pos = self.pos + 1;
             self.expect(";");
             let target = match self.breaks.get(self.breaks.len - 1) {
-                none => { fail(line, "`break` outside a loop"); "" }
+                none => { compile_error(line, "`break` outside a loop"); "" }
                 l => l.share(),
             };
             self.emit("b " + target);
@@ -120,7 +120,7 @@ impl Compiler {
             self.pos = self.pos + 1;
             self.expect(";");
             let target = match self.continues.get(self.continues.len - 1) {
-                none => { fail(line, "`continue` outside a loop"); "" }
+                none => { compile_error(line, "`continue` outside a loop"); "" }
                 l => l.share(),
             };
             self.emit("b " + target);

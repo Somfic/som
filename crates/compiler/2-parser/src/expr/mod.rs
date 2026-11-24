@@ -5,7 +5,7 @@ mod pattern;
 mod prefix;
 mod text;
 
-use som_ast::{BinOp, Expr, Id, Span};
+use som_ast::{BinOp, Expr, Id, Pattern, Span};
 use som_base::message::code;
 use som_base::{Fix, msg};
 use som_lexer::TokenKind;
@@ -79,6 +79,12 @@ impl Parser<'_> {
                 ))
             }
             TokenKind::OpenParen => self.parse_call(lhs, start).map(Step::Next),
+            // `value?`: what a `T!` holds, or the function fails with what it failed with.
+            TokenKind::Question if !binds(Bp::POSTFIX) => Some(Step::Stop),
+            TokenKind::Question => {
+                self.advance();
+                Some(Step::Next(self.alloc_expr(Expr::Propagate(lhs), start)))
+            }
             // `then if condition else otherwise`, on one line: an `if` starting a line is a
             // statement of its own, after a forgotten `;`.
             TokenKind::If if !binds(Bp::CONDITIONAL.left) || self.on_new_line() => Some(Step::Stop),
@@ -86,6 +92,23 @@ impl Parser<'_> {
             // In a body without braces, an `else` starting a line continues the `if`.
             TokenKind::Else if self.ctx.foreign_depth > 0 && self.on_new_line() => Some(Step::Stop),
             TokenKind::Else if !binds(Bp::FALLBACK.left) => Some(Step::Stop),
+            // `parse(text) else e => …`: what to do with why it failed.
+            TokenKind::Else
+                if self.peek_nth(1) == TokenKind::Ident && self.peek_nth(2) == TokenKind::FatArrow =>
+            {
+                self.advance();
+                let name = self.parse_ident("a name for why it failed")?;
+                let span = name.span.clone();
+                let error = (self.ast.patterns).alloc(Pattern::Binding { name, mutable: false }, span);
+                self.advance();
+                let body = self.parse_expr_bp(Bp::FALLBACK.right)?;
+                let expr = Expr::Recover {
+                    failable: lhs,
+                    error,
+                    body,
+                };
+                Some(Step::Next(self.alloc_expr(expr, start)))
+            }
             TokenKind::Else => {
                 self.advance();
                 let fallback = self.parse_expr_bp(Bp::FALLBACK.right)?;

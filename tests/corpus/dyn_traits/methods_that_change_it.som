@@ -1,0 +1,34 @@
+// expect: exit 15
+
+/// A method taking `&mut self` changes the value the `dyn` holds.
+trait Counter {
+    pub fn add(&mut self, n: i32);
+    pub fn total(&self) -> i32;
+}
+
+struct Plain { n: i32 }
+struct Doubling { n: i32 }
+
+impl Counter for Plain {
+    fn add(&mut self, n: i32) { self.n = self.n + n; }
+    fn total(&self) -> i32 = self.n;
+}
+
+impl Counter for Doubling {
+    fn add(&mut self, n: i32) { self.n = self.n + 2 * n; }
+    fn total(&self) -> i32 = self.n;
+}
+
+fn bump(c: &mut dyn Counter) {
+    c.add(1);
+    c.add(2);
+}
+
+fn main() -> i32 {
+    let mut a: dyn Counter = Plain { n: 0 };
+    let mut b: dyn Counter = Doubling { n: 6 };
+    bump(&mut a);
+    bump(&mut b);
+    // 3 + 12
+    a.total() + b.total()
+}

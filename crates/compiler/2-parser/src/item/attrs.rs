@@ -66,7 +66,15 @@ impl Parser<'_> {
     /// `@on fail`: the event's name.
     fn parse_on(&mut self) -> Option<()> {
         self.advance();
-        let event = self.parse_ident("an event, like `fail`")?;
+        // `fail` is a keyword, and an event's name.
+        let event = match self.at(TokenKind::Fail) {
+            true => {
+                let span = self.current_span();
+                self.advance();
+                Ident { name: som_lang::FAIL_EVENT.into(), span }
+            }
+            false => self.parse_ident("an event, like `fail`")?,
+        };
         self.wheres.listens.push(event);
         Some(())
     }

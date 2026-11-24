@@ -20,6 +20,8 @@ pub(crate) enum Byte {
     Data(u8),
     /// Byte `n` of a pointer to `loc`.
     Ptr(Rc<Loc>, u8),
+    /// Byte `n` of a function's address.
+    Func(som_mir::FuncId, u8),
 }
 
 /// Where each part of a value is, as C lays it out.
@@ -250,7 +252,7 @@ pub(crate) fn encode(mir: &Mir, value: &Value, ty: TypeId) -> Option<Vec<Byte>> 
             }
             bytes
         }
-        Value::Func(_) => return None,
+        Value::Func(f) => (0..POINTER as u8).map(|n| Byte::Func(*f, n)).collect(),
     })
 }
 
@@ -264,7 +266,7 @@ pub(crate) fn decode(mir: &Mir, bytes: &[Byte], ty: TypeId) -> Result<Value, Unr
             match byte {
                 Byte::Data(b) => data.push(*b),
                 Byte::Uninit => return Ok(None),
-                Byte::Ptr(..) => return Err(Unreadable::Pointer),
+                Byte::Ptr(..) | Byte::Func(..) => return Err(Unreadable::Pointer),
             }
         }
         Ok(Some(data))
@@ -334,6 +336,12 @@ fn pointer(bytes: &[Byte]) -> Result<Value, Unreadable> {
             Ok(Value::Ref(crate::Loc::foreign(
                 u128::from_le_bytes(word) as usize
             )))
+        }
+        Byte::Func(f, 0)
+            if (bytes.iter().enumerate())
+                .all(|(i, b)| matches!(b, Byte::Func(g, n) if g == f && *n as usize == i)) =>
+        {
+            Ok(Value::Func(*f))
         }
         Byte::Ptr(loc, 0)
             if (bytes.iter().enumerate()).all(

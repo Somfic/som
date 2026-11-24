@@ -1,5 +1,6 @@
 mod calls;
 mod consts;
+mod failing;
 mod mismatch;
 mod patterns;
 mod places;
@@ -16,6 +17,8 @@ pub enum Unused {
     /// `x == 5;`, with the statement as an assignment: `x = 5`.
     Comparison(String),
     Value,
+    /// A `T!` that may hold a failure no one looks at.
+    Failure,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -601,6 +604,53 @@ pub enum TypeError {
         ty: Message,
         span: Span,
     },
+    /// `fail` or `?` in a function whose type doesn't say it can fail.
+    FailInInfallible {
+        what: &'static str,
+        gives: Message,
+        span: Span,
+        /// Where what the function gives is written.
+        returns: Option<Span>,
+    },
+    /// `?` or `else e =>` of what can't fail.
+    NotFailable {
+        what: &'static str,
+        ty: Message,
+        optional: bool,
+        span: Span,
+    },
+    /// A `T!` where a `T` is expected: `let n: i32 = parse(text)`.
+    FailureUnhandled {
+        ty: Message,
+        span: Span,
+        expected_from: Option<Span>,
+    },
+    /// A function saying what it fails with fails with something else here.
+    FailsUndeclared {
+        func: String,
+        kinds: Vec<String>,
+        span: Span,
+        said: Option<Span>,
+    },
+    /// `fail NotFound { .. } =>` matching a `T!` that can't fail with a `NotFound`.
+    CantFailWith {
+        kind: String,
+        fails: String,
+        span: Span,
+    },
+    /// `fail 5 =>`: after `fail`, a name or a pattern naming a type.
+    FailedPatternNotAType {
+        span: Span,
+    },
+    /// `dyn Clone`: a trait some of whose methods can't be called on a value whose type isn't
+    /// known, `why` saying what of it.
+    NotDyn {
+        trait_: String,
+        why: Message,
+        span: Span,
+        /// The member that's why.
+        member: Option<Span>,
+    },
     NeedsOut {
         param: String,
         span: Span,
@@ -694,7 +744,8 @@ impl TypeError {
             | TypeError::NotDisplay { .. }
             | TypeError::DropOnCopy { .. }
             | TypeError::ShareOnCopy { .. }
-            | TypeError::BuiltinImpl { .. } => traits::diagnostic(self),
+            | TypeError::BuiltinImpl { .. }
+            | TypeError::NotDyn { .. } => traits::diagnostic(self),
             TypeError::UnknownVariant { .. }
             | TypeError::RustOptionalPattern { .. }
             | TypeError::PatternMismatch { .. }
@@ -704,6 +755,12 @@ impl TypeError {
             | TypeError::UnreachableArm { .. }
             | TypeError::WrongVariantForm { .. }
             | TypeError::ConstructEnum { .. } => patterns::diagnostic(self),
+            TypeError::FailInInfallible { .. }
+            | TypeError::NotFailable { .. }
+            | TypeError::FailureUnhandled { .. }
+            | TypeError::FailsUndeclared { .. }
+            | TypeError::CantFailWith { .. }
+            | TypeError::FailedPatternNotAType { .. } => failing::diagnostic(self),
             TypeError::ConstNotCount { .. }
             | TypeError::NotSettled { .. }
             | TypeError::ReflectNotStruct { .. }

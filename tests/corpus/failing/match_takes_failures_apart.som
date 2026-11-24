@@ -1,0 +1,38 @@
+// expect: exit 111
+
+/// A `match` on a `T!`: a pattern for the value it holds, `fail` with a struct's or enum's
+/// pattern for a failure with a value of that type, and `fail e` for any.
+struct NotFound { path: string }
+
+impl Display for NotFound {
+    prop display_len: usize = "{self.path} not found".len;
+    fn display(&self, to: *u8) { "{self.path} not found".display(to); }
+}
+
+enum ParseError { Empty, BadDigit { at: usize } }
+
+impl Display for ParseError {
+    prop display_len: usize = 9;
+    fn display(&self, to: *u8) { "bad input".display(to); }
+}
+
+fn load(what: i32) -> i32! {
+    if what == 1 { fail NotFound { path: "a.txt" }; }
+    if what == 2 { fail ParseError::BadDigit { at: 4 }; }
+    if what == 3 { fail ParseError::Empty; }
+    if what == 4 { fail "something else"; }
+    10
+}
+
+fn score(what: i32) -> i32 = match load(what) {
+    10 => 1,
+    n => n,
+    fail NotFound { path } => if path == "a.txt" { 10 } else { 0 },
+    fail ParseError::BadDigit { at } => at as i32 * 5,
+    fail ParseError::Empty => 30,
+    fail e => if "{e}" == "something else" { 50 } else { 0 },
+};
+
+fn main() -> i32 {
+    score(0) + score(1) + score(2) + score(3) + score(4)
+}
