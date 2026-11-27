@@ -1,0 +1,9 @@
+// expect: error AssignWhileBorrowed
+
+/// Reserved is still borrowed: the arguments after it can't replace what the call will change.
+fn grow(v: &mut List<i64>, n: i64) { v.push(n); }
+
+fn main() {
+    let mut v: List<i64> = List::empty();
+    grow(&mut v, { v = List::empty(); 1 });
+}

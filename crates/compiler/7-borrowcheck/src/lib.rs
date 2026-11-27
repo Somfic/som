@@ -3,8 +3,9 @@
 //! holder's storage dies. Temporaries hand their loans on when read. States merge by union,
 //! so "may have been moved" and "may still be borrowed" hold along every path.
 //!
-//! A method call's `&mut` of its receiver is a two-phase borrow, as in Rust: until the call
-//! uses it, it counts as shared, so `v.push(v.len())` can read `v`.
+//! A call's `&mut` of its receiver, or a `&mut x` argument, is a two-phase borrow: until the
+//! call uses it, it counts as shared, so `v.push(v.len())` and `f(&mut x, x.len())` can read
+//! `x`. (Rust allows only the receiver.)
 
 mod error;
 mod outs;
@@ -219,6 +220,13 @@ impl<'a> FnChecker<'a> {
                 state.reserved.insert(id);
             }
             return flows;
+        }
+        // A call uses each reserved borrow while every argument still holds its loans: reading
+        // `&b` in `absorb(&b, &mut b)` first would hand its loan on, out of sight.
+        for op in rvalue.operands() {
+            if let Operand::Copy(place) | Operand::Move(place) = op {
+                self.activate(state, place.local);
+            }
         }
         let mut reads = reads.iter().peekable();
         let mut flows = BTreeSet::new();

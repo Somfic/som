@@ -1,0 +1,24 @@
+// expect: exit 15
+
+/// A `&mut x` argument is only reserved while the arguments after it are evaluated, so they
+/// can read what it borrows: `draw(&mut gpu, gpu.width)`, as a method's `&mut self` can.
+struct Gpu { width: i64, drawn: i64 }
+
+impl Gpu {
+    fn area(&self) -> i64 = self.width * 2;
+}
+
+struct Scene { aspect: i64 }
+
+fn draw(gpu: &mut Gpu, scene: Scene) { gpu.drawn = gpu.drawn + scene.aspect; }
+
+fn grow(v: &mut List<i64>, n: i64) { v.push(n); }
+
+fn main() -> i32 {
+    let mut gpu = Gpu { width: 3, drawn: 0 };
+    draw(&mut gpu, Scene { aspect: gpu.width });
+    draw(&mut gpu, Scene { aspect: gpu.area() });
+    let mut v: List<i64> = List::empty();
+    grow(&mut v, v.len as i64 + 6);
+    (gpu.drawn + (v.pop() else 0)) as i32
+}

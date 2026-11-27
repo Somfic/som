@@ -1,0 +1,11 @@
+// expect: error ConflictingBorrow
+
+/// A reference a later argument makes is still alive when the call uses the `&mut`.
+struct Bag { n: i64 }
+
+fn absorb(bag: &mut Bag, other: &Bag) { bag.n = bag.n + other.n; }
+
+fn main() {
+    let mut b = Bag { n: 1 };
+    absorb(&mut b, &b);
+}

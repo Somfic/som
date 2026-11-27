@@ -21,10 +21,7 @@ impl FnBuilder<'_, '_> {
         let receiver = receiver.map(|r| self.receiver(r));
         let args: Vec<(Operand, TypeId, Span)> = receiver
             .into_iter()
-            .chain(
-                args.iter()
-                    .map(|&a| (self.operand(a), self.expr_ty(a), self.span(a))),
-            )
+            .chain(args.iter().map(|&a| self.argument(a)))
             .collect();
         // Every argument is evaluated before any is reborrowed, so `x.f(x.g())` works.
         let args = args
@@ -49,9 +46,8 @@ impl FnBuilder<'_, '_> {
             }
             None => None,
         };
-        let given: Vec<(Operand, TypeId, Span)> = (args.iter())
-            .map(|&a| (self.operand(a), self.expr_ty(a), self.span(a)))
-            .collect();
+        let given: Vec<(Operand, TypeId, Span)> =
+            args.iter().map(|&a| self.argument(a)).collect();
         let mut args: Vec<Operand> = (given.into_iter())
             .map(|(arg, ty, span)| self.reborrow(arg, ty, span))
             .collect();
@@ -66,6 +62,20 @@ impl FnBuilder<'_, '_> {
                 args,
             },
         }
+    }
+
+    /// An argument, worked out. A `&mut x` is a two-phase borrow, as a method's `self` is:
+    /// `f(&mut x, x.len())` reads `x` before the call uses the borrow.
+    fn argument(&mut self, arg: Id<Expr>) -> (Operand, TypeId, Span) {
+        let operand = self.operand(arg);
+        if let Expr::Borrow { mutable: true, .. } = self.l.ast.exprs[arg]
+            && let Operand::Move(place) = &operand
+            && place.projection.is_empty()
+            && self.locals[place.local].name.is_none()
+        {
+            self.two_phase.push(place.local);
+        }
+        (operand, self.expr_ty(arg), self.span(arg))
     }
 
     /// As the method's `self`: as it is, borrowed (`a.len()` for `self: &List`), or copied

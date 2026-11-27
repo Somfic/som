@@ -1,0 +1,12 @@
+// expect: error ConflictingBorrow
+
+/// Only arguments after the `&mut` are evaluated while it's reserved; one before it is still
+/// alive when it's taken.
+struct Bag { n: i64 }
+
+fn absorb(other: &Bag, bag: &mut Bag) { bag.n = bag.n + other.n; }
+
+fn main() {
+    let mut b = Bag { n: 1 };
+    absorb(&b, &mut b);
+}

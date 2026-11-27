@@ -1,0 +1,120 @@
+use som::gpu;
+use wgpu;
+
+// A raytracer in a fragment shader: one ray for each pixel, bounced off mirrors in a loop.
+
+@const SPHERES: usize = 4;
+@const BOUNCES: i32 = 4;
+@const EPSILON: f32 = 0.001;
+@const FAR: f32 = 1000000.0;
+
+/// What the shader is told: each sphere's centre and radius, and its colour and how much it
+/// mirrors, packed in `Vec4`s since a uniform array holds numbers or vectors.
+struct Scene {
+    pub eye: Vec3,
+    pub aspect: f32,
+    pub light: Vec3,
+    pub spheres: [Vec4; SPHERES],
+    pub materials: [Vec4; SPHERES],
+}
+
+struct Ray { origin: Vec3, dir: Vec3 }
+impl Copy for Ray {}
+
+struct Hit { t: f32, point: Vec3, normal: Vec3, color: Vec3, mirror: f32 }
+impl Copy for Hit {}
+
+fn reflect(d: Vec3, n: Vec3) -> Vec3 = d - n * (2.0 * d.dot(&n));
+
+/// How far along `ray` it meets the sphere at `c` of radius `r`, if it does.
+fn sphere(ray: Ray, c: Vec3, r: f32) -> f32? {
+    let oc = ray.origin - c;
+    let b = oc.dot(&ray.dir);
+    let disc = b * b - oc.dot(&oc) + r * r;
+    if disc < 0.0 { return none; }
+    let root = disc.sqrt();
+    if -b - root > EPSILON { return -b - root; }
+    if -b + root > EPSILON { return -b + root; }
+    none
+}
+
+/// The nearest thing `ray` meets: a sphere, or the floor at y = -1.
+fn hit(ray: Ray, s: &Scene) -> Hit? {
+    let mut best: Hit? = none;
+    let mut nearest = FAR;
+    for i in 0..SPHERES {
+        let t = sphere(ray, s.spheres[i].xyz, s.spheres[i].w);
+        if t {
+            if t < nearest {
+                nearest = t;
+                let p = ray.origin + ray.dir * t;
+                best = Hit { t, point: p, normal: (p - s.spheres[i].xyz).normalized, color: s.materials[i].xyz, mirror: s.materials[i].w };
+            }
+        }
+    }
+    if ray.dir.y < 0.0 {
+        let t = (-1.0 - ray.origin.y) / ray.dir.y;
+        if t > EPSILON && t < nearest {
+            let p = ray.origin + ray.dir * t;
+            let odd = ((p.x.floor() + p.z.floor()) * 0.5).fract() > 0.25;
+            let shade = if odd { 0.25 } else { 0.9 };
+            best = Hit { t, point: p, normal: vec3(0.0, 1.0, 0.0), color: vec3(shade, shade, shade), mirror: 0.15 };
+        }
+    }
+    best
+}
+
+fn sky(dir: Vec3) -> Vec3 = vec3(1.0, 1.0, 1.0).mix(&vec3(0.5, 0.7, 1.0), 0.5 * (dir.y + 1.0));
+
+@fragment
+fn trace(frag: Fragment, s: &Scene) -> Vec4 {
+    let u = (frag.uv.x * 2.0 - 1.0) * s.aspect;
+    let v = 1.0 - frag.uv.y * 2.0;
+    let mut ray = Ray { origin: s.eye, dir: vec3(u, v, -1.5).normalized };
+    // No recursion on the GPU: what each bounce adds is weighed by how much got this far.
+    let mut color = vec3(0.0, 0.0, 0.0);
+    let mut weight = 1.0;
+    for _ in 0..BOUNCES {
+        let h = hit(ray, s);
+        if !h {
+            color = color + sky(ray.dir) * weight;
+            break;
+        }
+        let to_light = (s.light - h.point).normalized;
+        let shadow = hit(Ray { origin: h.point + h.normal * EPSILON, dir: to_light }, s);
+        let lit = if shadow { 0.0 } else { h.normal.dot(&to_light).max(0.0) };
+        let spec = if shadow { 0.0 } else { reflect(to_light * -1.0, h.normal).dot(&(ray.dir * -1.0)).max(0.0).pow(60.0) };
+        let local = h.color * (0.08 + lit) + vec3(1.0, 1.0, 1.0) * spec;
+        color = color + local * (weight * (1.0 - h.mirror));
+        weight = weight * h.mirror;
+        if weight < 0.01 { break; }
+        ray = Ray { origin: h.point + h.normal * EPSILON, dir: reflect(ray.dir, h.normal) };
+    }
+    vec4(color.x.sqrt(), color.y.sqrt(), color.z.sqrt(), 1.0)
+}
+
+fn main() {
+    let mut gpu = wgpu::Gpu::open("raytracer", 960, 540);
+    let mut shader: wgpu::Shader<Scene> = wgpu::Shader::fragment(trace);
+    while gpu.frame() {
+        let time = gpu.time();
+        let mut spheres = [vec4(0.0, 0.0, 0.0, 0.0); SPHERES];
+        spheres[0] = vec4(0.0, 0.0, -4.0, 1.0);
+        spheres[1] = vec4(-2.2, -0.3 + 0.3 * (time * 2.0).sin(), -5.0, 0.7);
+        spheres[2] = vec4(2.1, 0.2, -4.8, 1.2);
+        spheres[3] = vec4(1.2 * time.cos(), -0.7, -4.0 + 1.2 * time.sin(), 0.3);
+        let mut materials = [vec4(0.0, 0.0, 0.0, 0.0); SPHERES];
+        materials[0] = vec4(0.9, 0.2, 0.2, 0.2);
+        materials[1] = vec4(0.2, 0.8, 0.3, 0.0);
+        materials[2] = vec4(0.9, 0.9, 0.9, 0.8);
+        materials[3] = vec4(0.3, 0.4, 1.0, 0.1);
+        shader.fullscreen(&mut gpu, Scene {
+            eye: vec3(0.0, 0.0, 0.0),
+            aspect: gpu.width as f32 / gpu.height as f32,
+            light: vec3(-5.0, 5.0, 0.0),
+            spheres,
+            materials,
+        });
+        gpu.present();
+    }
+}
