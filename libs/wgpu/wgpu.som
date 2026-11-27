@@ -201,14 +201,22 @@ fn open_device(instance: WGPUInstanceImpl, adapter: WGPUAdapterImpl) -> WGPUDevi
     *(&made.value as *WGPUDeviceImpl).at(0)
 }
 
-/// A surface to draw to `window` with: its Metal layer on macOS, and on Linux its Wayland
-/// surface, or its X11 window where SDL isn't on Wayland.
+/// A surface to draw to `window` with: its Metal layer on macOS, its window handle on
+/// Windows, and on Linux its Wayland surface, or its X11 window where SDL isn't on Wayland.
 fn window_surface(instance: WGPUInstanceImpl, window: SDLWindow) -> WGPUSurfaceImpl {
     let mut descriptor: WGPUSurfaceDescriptor = zeroed();
     @if MACOS {
         let mut source: WGPUSurfaceSourceMetalLayer = zeroed();
         source.chain.s_type = WGPUSType::SurfaceSourceMetalLayer as i32;
         source.layer = sdl_metal_get_layer(sdl_metal_create_view(window));
+        descriptor.next_in_chain = &source as *;
+        return wgpu_instance_create_surface(instance, &descriptor);
+    } else @if WINDOWS {
+        let properties = sdl_get_window_properties(window);
+        let mut source: WGPUSurfaceSourceWindowsHWND = zeroed();
+        source.chain.s_type = WGPUSType::SurfaceSourceWindowsHWND as i32;
+        source.hinstance = sdl_get_pointer_property(properties, "SDL.window.win32.instance", null());
+        source.hwnd = sdl_get_pointer_property(properties, "SDL.window.win32.hwnd", null());
         descriptor.next_in_chain = &source as *;
         return wgpu_instance_create_surface(instance, &descriptor);
     } else {
