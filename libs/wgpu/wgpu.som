@@ -201,6 +201,36 @@ fn open_device(instance: WGPUInstanceImpl, adapter: WGPUAdapterImpl) -> WGPUDevi
     *(&made.value as *WGPUDeviceImpl).at(0)
 }
 
+/// A surface to draw to `window` with: its Metal layer on macOS, and on Linux its Wayland
+/// surface, or its X11 window where SDL isn't on Wayland.
+fn window_surface(instance: WGPUInstanceImpl, window: SDLWindow) -> WGPUSurfaceImpl {
+    let mut descriptor: WGPUSurfaceDescriptor = zeroed();
+    @if MACOS {
+        let mut source: WGPUSurfaceSourceMetalLayer = zeroed();
+        source.chain.s_type = WGPUSType::SurfaceSourceMetalLayer as i32;
+        source.layer = sdl_metal_get_layer(sdl_metal_create_view(window));
+        descriptor.next_in_chain = &source as *;
+        return wgpu_instance_create_surface(instance, &descriptor);
+    } else {
+        let properties = sdl_get_window_properties(window);
+        let wayland = sdl_get_pointer_property(properties, "SDL.window.wayland.surface", null());
+        if wayland != null() {
+            let mut source: WGPUSurfaceSourceWaylandSurface = zeroed();
+            source.chain.s_type = WGPUSType::SurfaceSourceWaylandSurface as i32;
+            source.display = sdl_get_pointer_property(properties, "SDL.window.wayland.display", null());
+            source.surface = wayland;
+            descriptor.next_in_chain = &source as *;
+            return wgpu_instance_create_surface(instance, &descriptor);
+        }
+        let mut source: WGPUSurfaceSourceXlibWindow = zeroed();
+        source.chain.s_type = WGPUSType::SurfaceSourceXlibWindow as i32;
+        source.display = sdl_get_pointer_property(properties, "SDL.window.x11.display", null());
+        source.window = sdl_get_number_property(properties, "SDL.window.x11.window", 0) as u64;
+        descriptor.next_in_chain = &source as *;
+        return wgpu_instance_create_surface(instance, &descriptor);
+    }
+}
+
 fn waited(instance: WGPUInstanceImpl, waiting: &Waiting) {
     let at = waiting as * as *Waiting;
     while !at.at(0).done {
@@ -213,19 +243,16 @@ impl Gpu {
     /// screen) titled `title`, and the GPU to draw to it.
     pub fn open(title: cstr, width: i32, height: i32) -> Gpu {
         sdl_init(SDL_INIT_VIDEO);
-        let flags = SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+        let mut flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+        @if MACOS {
+            flags = flags | SDL_WINDOW_METAL;
+        }
         let window = sdl_create_window(title, width, height, flags);
         sdl_raise_window(window);
-        let layer = sdl_metal_get_layer(sdl_metal_create_view(window));
 
         let instance_descriptor: WGPUInstanceDescriptor = zeroed();
         let instance = wgpu_create_instance(&instance_descriptor);
-        let mut source: WGPUSurfaceSourceMetalLayer = zeroed();
-        source.chain.s_type = WGPUSType::SurfaceSourceMetalLayer as i32;
-        source.layer = layer;
-        let mut surface_descriptor: WGPUSurfaceDescriptor = zeroed();
-        surface_descriptor.next_in_chain = &source as *;
-        let surface = wgpu_instance_create_surface(instance, &surface_descriptor);
+        let surface = window_surface(instance, window);
 
         let adapter = find_adapter(instance, surface);
         let device = open_device(instance, adapter);
