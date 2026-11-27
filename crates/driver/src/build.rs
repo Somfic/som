@@ -6,7 +6,7 @@ use std::process::{Command, ExitStatus};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::Checked;
-use crate::toolchain::{self, Os};
+use crate::toolchain;
 
 #[derive(Debug)]
 pub enum BuildError {
@@ -204,10 +204,9 @@ pub fn command(checked: &Checked, executable: &Path, args: &[String]) -> Command
         let target = &checked.toolchain.target;
         let var = target.library_path_var();
         let mut dirs = dirs;
-        // Windows finds DLLs through `PATH`, which still has to find everything else.
-        if target.os() == Os::Windows
-            && let Some(existing) = std::env::var_os(var)
-        {
+        // What's already there still has to be found: everything else through `PATH` on
+        // Windows, and libraries loaded while running, like Vulkan for wgpu, elsewhere.
+        if let Some(existing) = std::env::var_os(var) {
             dirs.extend(std::env::split_paths(&existing));
         }
         let joined = std::env::join_paths(&dirs).unwrap_or_default();
