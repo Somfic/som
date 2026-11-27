@@ -127,8 +127,9 @@ impl Translator<'_> {
             } else if self.is_lang(to, LangStruct::Fragment) && !std::mem::replace(&mut input, true) {
                 Param::Fragment(to)
             } else if !by_ref
-                && matches!(self.mir.types.get(to), Ty::Struct(def, args)
-                    if self.mir.struct_def(*def, args).variants.is_none())
+                && (self.passed_whole(to).is_some()
+                    || matches!(self.mir.types.get(to), Ty::Struct(def, args)
+                        if self.mir.struct_def(*def, args).variants.is_none()))
                 && !std::mem::replace(&mut input, true)
             {
                 Param::Varyings(to)

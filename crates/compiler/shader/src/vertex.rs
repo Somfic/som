@@ -3,7 +3,8 @@
 //! A vertex shader takes a struct of the corner's numbers (each field a vertex attribute,
 //! `@location(i)` in field order, read from the mesh's buffer as the CPU lays the struct out)
 //! and may take a `&` to a struct of uniforms. It gives a `gpu::Vertex<S>`: the clip position,
-//! and an `S` of the program's own. Each of `S`'s fields is `@location(i)` of `SomVaryings`,
+//! and an `S` of the program's own, or a number or vector of them, passed on whole as
+//! `@location(0)`. Each of a struct `S`'s fields is `@location(i)` of `SomVaryings`,
 //! blended between the corners for each pixel (an integer is taken from the first, `flat`).
 //! The fragment shader taking that `S` is made from the same `SomVaryings`, so the two
 //! modules agree on it without knowing of each other.
@@ -126,9 +127,13 @@ impl Translator<'_> {
         let passed_member = self.field_member(ret, "passed");
         let count = self.leaf_fields(out, |t| msg!["it gives a ", t.ty_part(out)], &span, "passed to the fragment shader")?.len();
         let mut passed = vec![format!("r.{position}")];
-        for i in 0..count {
-            let member = self.member_name(out, self.field_index(out, i)).expect("checked above");
-            passed.push(format!("r.{passed_member}.{member}"));
+        if self.passed_whole(out).is_some() {
+            passed.push(format!("r.{passed_member}"));
+        } else {
+            for i in 0..count {
+                let member = self.member_name(out, self.field_index(out, i)).expect("checked above");
+                passed.push(format!("r.{passed_member}.{member}"));
+            }
         }
         let main = format!(
             "@vertex\nfn vs_main({}) -> {VARYINGS} {{\n    let r: {vertex} = {shader}({});\n    return {VARYINGS}({});\n}}\n",
@@ -184,6 +189,10 @@ impl Translator<'_> {
         span: &som_base::Span,
         one: &str,
     ) -> Result<Vec<(String, bool)>, Problem> {
+        if let Some(scalar) = self.passed_whole(ty) {
+            let native = self.ty(ty).map_err(|no| no.at(span, what(self)))?;
+            return Ok(vec![(native, scalar != Scalar::Float)]);
+        }
         let Ty::Struct(def, args) = self.mir.types.get(ty).clone() else {
             unreachable!("a struct")
         };
@@ -240,8 +249,21 @@ impl Translator<'_> {
         Ok(format!("struct {VARYINGS} {{\n{}\n}}\n", lines.join("\n")))
     }
 
+    /// A number or vector of numbers (`f32`, `i32`, `u32`): passed on whole, as one field, not
+    /// field by field like a struct of the program's. The kind of number it is.
+    pub(crate) fn passed_whole(&self, ty: TypeId) -> Option<Scalar> {
+        let scalar = match self.scalar(ty) {
+            Ok(Some(scalar)) => Some(scalar),
+            _ => self.native_vector(ty).map(|(scalar, _)| scalar),
+        };
+        scalar.filter(|&s| s != Scalar::Bool)
+    }
+
     /// `out`, made from `SomVaryings` `v` in a fragment shader.
     pub(crate) fn from_varyings(&mut self, out: TypeId, span: &som_base::Span) -> Result<String, Problem> {
+        if self.passed_whole(out).is_some() {
+            return Ok("v.v0".into());
+        }
         let count = self.leaf_fields(out, |t| msg!["it takes a ", t.ty_part(out)], span, "passed to the fragment shader")?.len();
         let parts: Vec<String> = (0..count).map(|i| format!("v.v{i}")).collect();
         let name = self.ty(out).map_err(|no| no.at(span, "it".into()))?;

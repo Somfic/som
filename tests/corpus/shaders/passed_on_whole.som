@@ -1,0 +1,38 @@
+// expect: exit 0
+
+/// What a vertex shader passes on can be a number or a vector of them, not only a struct: it's
+/// passed on whole, and the fragment shader drawn with it takes the same.
+use som::gpu;
+
+struct Corner { pub pos: Vec2, pub colour: Vec3 }
+impl Copy for Corner {}
+
+@vertex
+fn coloured(c: Corner) -> gpu::Vertex<Vec3> {
+    gpu::Vertex { position: vec4(c.pos.x, c.pos.y, 0.0, 1.0), passed: c.colour }
+}
+
+@fragment
+fn paint(colour: Vec3) -> Vec4 {
+    vec4(colour, 1.0)
+}
+
+@vertex
+fn shaded(c: Corner) -> gpu::Vertex<f32> {
+    gpu::Vertex { position: vec4(c.pos.x, c.pos.y, 0.0, 1.0), passed: c.colour.x }
+}
+
+@fragment
+fn grey(light: f32) -> Vec4 {
+    vec4(light, light, light, 1.0)
+}
+
+fn main() -> i32 {
+    let v = coloured(Corner { pos: vec2(0.5, 0.25), colour: vec3(1.0, 0.0, 0.0) });
+    if paint(v.passed).r != 1.0 { return 1; }
+    let s = shaded(Corner { pos: vec2(0.5, 0.25), colour: vec3(0.5, 0.0, 0.0) });
+    if grey(s.passed).g != 0.5 { return 2; }
+    if gpu::shader(coloured).len == 0 || gpu::shader(paint).len == 0 { return 3; }
+    if gpu::shader(shaded).len == 0 || gpu::shader(grey).len == 0 { return 4; }
+    0
+}

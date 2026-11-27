@@ -37,6 +37,8 @@
             raylib
             box2d
             sqlite
+            sdl3
+            wgpu-native
           ];
 
           shellHook = ''
@@ -48,6 +50,11 @@
               cargo install committer
             fi
           '';
+
+          # libs/wgpu includes `webgpu.h` bare, as Homebrew installs it; Nix keeps it in include/webgpu.
+          CPATH = "${pkgs.wgpu-native.dev}/include/webgpu";
+          # wgpu loads Vulkan at runtime rather than linking it.
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.vulkan-loader ];
 
           RUST_BACKTRACE = "1";
           RUST_LOG = "debug";
