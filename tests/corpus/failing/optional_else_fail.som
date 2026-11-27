@@ -1,0 +1,8 @@
+// expect: exit 1
+
+/// What the hint for `?` of an optional suggests: `else fail "…"` fails when it's `none`.
+fn get() -> i32? = none;
+
+fn main() -> ! {
+    let m = get() else fail "nothing to get";
+}

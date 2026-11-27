@@ -617,6 +617,8 @@ pub enum TypeError {
         what: &'static str,
         ty: Message,
         optional: bool,
+        /// Whether the function it's in can fail, so an optional's `none` can be a failure.
+        in_failable: bool,
         span: Span,
     },
     /// A `T!` where a `T` is expected: `let n: i32 = parse(text)`.

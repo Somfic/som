@@ -1,0 +1,32 @@
+// expect: exit 42
+
+/// A `T!` given back as it is, as the function's value or by `return`, fails with what it
+/// fails with: matching on the caller finds those failures.
+struct Missing { code: i32 }
+
+impl Display for Missing {
+    prop display_len: usize = 7;
+    fn display(&self, to: *u8) { "missing".display(to); }
+}
+
+fn find(n: i32) -> i32! {
+    if n == 0 { fail Missing { code: 40 }; }
+    n
+}
+
+fn by_value(n: i32) -> i32! = find(n);
+
+fn by_return(n: i32) -> i32! {
+    if n > 100 { return find(0); }
+    if n > 10 { find(n) } else { by_value(n) }
+}
+
+fn code(found: i32!) -> i32 = match found {
+    n => n,
+    fail Missing { code } => code,
+    fail e => 0,
+};
+
+fn main() -> i32 {
+    code(by_value(0)) + code(by_return(1)) + code(by_return(200)) - 39
+}

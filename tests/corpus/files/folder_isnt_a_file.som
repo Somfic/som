@@ -1,0 +1,12 @@
+// expect: exit 5
+
+/// Reading a folder as a file fails, and says it's a folder.
+use som::io;
+
+fn main() -> i32 {
+    match io::read_file("/tmp/") {
+        text => 1,
+        fail io::IoError { kind: io::IoErrorKind::IsFolder, .. } => 5,
+        fail e => 2,
+    }
+}

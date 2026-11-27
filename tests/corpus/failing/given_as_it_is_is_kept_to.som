@@ -1,0 +1,21 @@
+// expect: error FailsUndeclared
+
+/// A function saying it fails with nothing more than `Timeout` can't give back as it is
+/// a `T!` that fails with something else.
+struct Timeout { secs: i32 }
+
+impl Display for Timeout {
+    prop display_len: usize = 7;
+    fn display(&self, to: *u8) { "timeout".display(to); }
+}
+
+struct Missing { code: i32 }
+
+impl Display for Missing {
+    prop display_len: usize = 7;
+    fn display(&self, to: *u8) { "missing".display(to); }
+}
+
+fn find() -> i32! { fail Missing { code: 1 }; }
+
+fn wait() -> i32!Timeout = find();

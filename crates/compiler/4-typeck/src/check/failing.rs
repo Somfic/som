@@ -101,10 +101,12 @@ impl Checker<'_> {
             return ok;
         }
         if *self.u.shallow_ty(found) != Ty::Error {
+            let in_failable = (self.returns.clone()).is_some_and(|(ret, _)| self.outcome_inner(ret).is_some());
             self.errors.push(TypeError::NotFailable {
                 what,
                 ty: self.describe(found),
                 optional: matches!(self.u.shallow_ty(found), Ty::Optional(_)),
+                in_failable,
                 span: self.span(expr),
             });
         }

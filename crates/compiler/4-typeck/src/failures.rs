@@ -196,6 +196,26 @@ impl<'a> Walk<'a> {
     fn body(&mut self, func: Id<Func>) {
         if let Some(body) = self.ast.funcs[func].body {
             self.expr(body);
+            self.passed_on(body);
+        }
+    }
+
+    /// `expr` is what the function gives: a `T!` it gives as it is fails as it does.
+    fn passed_on(&mut self, expr: Id<Expr>) {
+        match &self.ast.exprs[expr] {
+            Expr::Block { value: Some(value), .. } => self.passed_on(*value),
+            Expr::Conditional {
+                then, otherwise, ..
+            } => {
+                self.passed_on(*then);
+                self.passed_on(*otherwise);
+            }
+            Expr::Match { arms, .. } => arms.iter().for_each(|arm| self.passed_on(arm.body)),
+            Expr::Call { .. } | Expr::MethodCall { .. } | Expr::Var(_) if self.is_failable(expr) => {
+                let set = self.set_of(expr);
+                self.fails_with(set, self.ast.exprs.span(expr).clone());
+            }
+            _ => {}
         }
     }
 
@@ -289,6 +309,11 @@ impl<'a> Walk<'a> {
                 let set = self.set_of(value);
                 self.locals.entry(def).or_default().add(&set);
             }
+            return;
+        }
+        if let Stmt::Return(Some(value)) = &self.ast.stmts[id] {
+            self.expr(*value);
+            self.passed_on(*value);
             return;
         }
         self.ast.stmts[id].for_each_child(|child| self.child(child));

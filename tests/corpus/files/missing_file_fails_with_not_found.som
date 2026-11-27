@@ -1,0 +1,13 @@
+// expect: exit 7
+
+/// Opening a file that isn't there fails with an `IoError` whose kind says so, and which
+/// file it was.
+use som::io;
+
+fn main() -> i32 {
+    match io::File::open("/no/such/folder/notes.txt") {
+        file => 1,
+        fail io::IoError { kind: io::IoErrorKind::NotFound, path, .. } => if path == "/no/such/folder/notes.txt" { 7 } else { 2 },
+        fail e => 3,
+    }
+}

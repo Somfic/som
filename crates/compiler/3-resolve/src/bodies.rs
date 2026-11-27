@@ -703,19 +703,31 @@ impl<'a> Resolver<'a> {
                 self.resolve_pattern(*inner);
             }
             Pattern::Variant { path, fields } => {
+                let named = matches!(fields, PatternFields::Named { .. });
+                let a_struct = |r: &Self, def: DefId| {
+                    matches!(r.names.def(def).kind, DefKind::Struct(s) if !r.ast.structs[s].is_enum())
+                };
+                // `geo::Point { x, y }`: a struct's fields, named through its module.
+                if named
+                    && path.segments.len() > 1
+                    && let Some(def) = self.lookup_qualified(path, Expect::Type)
+                    && a_struct(self, def)
+                {
+                    self.resolve_path(path, Expect::Type);
+                    self.names.set_pattern(id, def);
+                }
                 // `Shape::Circle(r)`; a bare `Circle(r)` is found from the type matched.
-                if path.segments.len() > 1
+                else if path.segments.len() > 1
                     && let Some(def) = self.resolve_path(path, Expect::Value)
                 {
                     self.names.set_pattern(id, def);
                 }
                 // `Point { x, y }`: a struct's fields, if a struct in scope has that name.
                 if let [only] = &path.segments[..]
-                    && matches!(fields, PatternFields::Named { .. })
+                    && named
                     && self.names.pattern(id).is_none()
                     && let Some(def) = self.lookup(&only.name, Expect::Type)
-                    && let DefKind::Struct(s) = self.names.def(def).kind
-                    && !self.ast.structs[s].is_enum()
+                    && a_struct(self, def)
                 {
                     self.names.set_pattern(id, def);
                 }

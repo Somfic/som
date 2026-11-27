@@ -1,0 +1,16 @@
+// expect: exit 0
+
+/// `?` works inside `"{…}"` like anywhere else: the function fails there with the same
+/// failure.
+fn number(n: i32) -> i32! {
+    if n < 0 { fail "negative"; }
+    n
+}
+
+fn shown(n: i32) -> string! = "got {number(n)?}";
+
+fn main() -> ! {
+    if shown(4)? != "got 4" { fail "wrong text"; }
+    let failed = shown(-1) else e => "{e}";
+    if failed != "negative" { fail "wrong failure: {failed}"; }
+}

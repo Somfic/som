@@ -1,33 +1,134 @@
 use som::c;
 
-pub struct File {
-    ptr: *,
-    mode: FileMode
+/// Why a file couldn't be opened, read or written: what the system said, and the file.
+/// Shown as `notes.txt: no such file`.
+pub struct IoError {
+    pub kind: IoErrorKind,
+    /// The system's own number for it, C's `errno`.
+    pub code: i32,
+    pub path: string,
 }
 
-pub enum FileMode {
-    Read,
-    Write
+pub enum IoErrorKind {
+    NotFound,
+    PermissionDenied,
+    AlreadyExists,
+    IsFolder,
+    NotFolder,
+    /// Anything else: `code` says what.
+    Other,
+}
+
+impl IoError {
+    /// The failure the system just reported, for `path`.
+    fn last(path: string) -> IoError {
+        let code = errno();
+        let kind = if code == c::ENOENT {
+            IoErrorKind::NotFound
+        } else if code == c::EACCES {
+            IoErrorKind::PermissionDenied
+        } else if code == c::EEXIST {
+            IoErrorKind::AlreadyExists
+        } else if code == c::EISDIR {
+            IoErrorKind::IsFolder
+        } else if code == c::ENOTDIR {
+            IoErrorKind::NotFolder
+        } else {
+            IoErrorKind::Other
+        };
+        IoError { kind, code, path }
+    }
+
+    fn text(&self) -> string {
+        let what = match self.kind {
+            IoErrorKind::NotFound => "no such file",
+            IoErrorKind::PermissionDenied => "permission denied",
+            IoErrorKind::AlreadyExists => "it already exists",
+            IoErrorKind::IsFolder => "it's a folder",
+            IoErrorKind::NotFolder => "part of the path isn't a folder",
+            IoErrorKind::Other => string::from_c(c::strerror(self.code) as cstr),
+        };
+        "{self.path}: {what}"
+    }
+}
+
+impl Display for IoError {
+    prop display_len: usize = self.text().len;
+    fn display(&self, to: *u8) { self.text().display(to); }
+}
+
+/// C's `errno`: why the last call into the C library failed.
+fn errno() -> i32 {
+    @if WINDOWS {
+        return (c::_errno() as *i32).take(0);
+    } else {
+        return posix_errno();
+    }
+}
+
+fn posix_errno() -> i32 {
+    @if MACOS {
+        return (c::__error() as *i32).take(0);
+    } else {
+        return (c::__errno_location() as *i32).take(0);
+    }
+}
+
+/// An open file. Closed when it's dropped.
+pub struct File {
+    ptr: *,
+    path: string,
 }
 
 impl File {
-    pub fn open(path: string, mode: FileMode) -> Self? {
-        let flags: cstr = match mode {
-            Read => "r",
-            Write => "w",
-        };
+    /// `path`, to read.
+    pub fn open(path: string) -> File! = File::open(path, "rb");
 
-        c::getpid();
+    /// `path`, to write, emptied first; made if it isn't there.
+    pub fn create(path: string) -> File! = File::open(path, "wb");
 
-        let ptr = c::fopen(path.c_str, flags);
+    /// `path`, to write at its end; made if it isn't there.
+    pub fn append(path: string) -> File! = File::open(path, "ab");
 
+    fn open(path: string, mode: cstr) -> File! {
+        let ptr = c::fopen(path.c_str, mode);
         if ptr == som::mem::null() {
-            none
-        } else {
-            File { ptr, mode }
+            fail IoError::last(path);
+        }
+        File { ptr, path }
+    }
+
+    /// Everything from here to the end.
+    pub fn read_all(&mut self) -> string! {
+        let mut bytes: List<u8> = List::empty();
+        let chunk: *u8 = c::malloc(4096) as *u8;
+        loop {
+            let n = c::fread(chunk as *, 1, 4096, .ptr);
+            for i in 0..n as usize {
+                bytes.push(chunk.take(i));
+            }
+            if n < 4096 {
+                break;
+            }
+        }
+        c::free(chunk as *);
+        if c::ferror(.ptr) != 0 {
+            fail IoError::last(.path);
+        }
+        string::from_bytes(bytes.as_slice())
+    }
+
+    /// Writes `value`, as text. It's in the file once this returns: a failure to write it
+    /// is this one's, not lost when the file is closed.
+    pub fn write<T: Display>(&mut self, value: T) -> ! {
+        let text = value.to_string();
+        let written = c::fwrite(text.c_str as *, 1, text.len as u64, .ptr);
+        if written < text.len as u64 || c::fflush(.ptr) != 0 {
+            fail IoError::last(.path);
         }
     }
 
+    /// Each line from here on, without its `\n`.
     pub fn lines(&mut self) -> Lines {
         Lines { file: self, buf: som::mem::null(), cap: 0 }
     }
@@ -41,6 +142,18 @@ impl Drop for File {
     fn drop(self: &mut File) {
         c::fclose(self.ptr);
     }
+}
+
+/// Everything in the file at `path`.
+pub fn read_file(path: string) -> string! {
+    let mut file = File::open(path)?;
+    file.read_all()
+}
+
+/// Makes the file at `path` hold `value`, as text, and only that.
+pub fn write_file<T: Display>(path: string, value: T) -> ! {
+    let mut file = File::create(path)?;
+    file.write(value)
 }
 
 struct Lines {

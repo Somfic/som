@@ -191,6 +191,19 @@ From writing `example/shooter` (a raycasting shooter, 2026-11-21), what made sha
 - [ ] Missing `fail` arms for an enum nothing matches list every variant; a long enum makes
       a long message.
 
+## Files (2026-11-25, see docs/errors.md "Files")
+
+- [ ] `eprint`/`eprintln`, and stdin/stdout/stderr as `File`s.
+- [ ] `remove`, `rename`, `list_dir`, `make_dir`.
+- [ ] `lines()` stops at a read error as if the file ended; give `string!` items, or check
+      `ferror` after.
+- [ ] Closing in `Drop` ignores `fclose`'s result; `write` flushes, so only a failure at
+      close itself is lost.
+- [ ] Paths are bytes as given: on Windows `fopen` reads them in the ANSI code page, not
+      UTF-8 (`_wfopen` needs a UTF-16 conversion).
+- [ ] `read_all` copies byte by byte through a `List<u8>`: read straight into the string's
+      memory.
+
 ## dyn (2026-11-24, see docs/dyn.md)
 
 - [ ] `Rc::new(Five {})` where a `#dyn Size` is expected: the expected type doesn't reach a

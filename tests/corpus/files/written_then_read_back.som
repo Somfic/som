@@ -1,0 +1,19 @@
+// expect: exit 0
+
+/// `write_file` makes a file hold some text, `File::append` adds to its end, and
+/// `read_file` gives it all back.
+use som::io;
+use som::c;
+
+fn main() -> ! {
+    let path = "/tmp/som-written-{c::getpid()}.txt";
+    io::write_file(path, "one\n")?;
+    let mut file = io::File::append(path)?;
+    file.write(2)?;
+    file.write("\n")?;
+    let text = io::read_file(path)?;
+    c::unlink(path.c_str);
+    if text != "one\n2\n" {
+        fail "read back {text}";
+    }
+}

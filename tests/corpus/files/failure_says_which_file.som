@@ -1,0 +1,16 @@
+// expect: exit 0
+
+/// An `IoError` is shown as the file and what's wrong with it, after what `else fail` says
+/// was being done.
+use som::io;
+
+fn load() -> string! {
+    io::read_file("/no/such/notes.txt") else fail "loading notes"
+}
+
+fn main() -> ! {
+    let shown = load() else e => "{e}";
+    if shown != "loading notes: /no/such/notes.txt: no such file" {
+        fail "shown as {shown}";
+    }
+}

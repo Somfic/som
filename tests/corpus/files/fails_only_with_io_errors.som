@@ -1,0 +1,10 @@
+// expect: ok
+
+/// Reading and writing files fails with `IoError`s and nothing else, so a function passing
+/// their failures on can say so.
+use som::io;
+
+fn copy(from: string, to: string) -> !io::IoError {
+    let text = io::read_file(from)?;
+    io::write_file(to, text)
+}

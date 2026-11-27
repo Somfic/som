@@ -1,0 +1,9 @@
+// expect: error NotFailable
+
+/// `?` of an optional in a function that can fail: there's no failure to pass on, so it
+/// says how to make one, `value else fail "…"`.
+fn get() -> i32? = none;
+
+fn main() -> ! {
+    let m = get()?;
+}

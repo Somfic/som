@@ -232,9 +232,6 @@ pub @const MAC_OS_VERSION_26_1: i32 = 260100;
 pub @const MAC_OS_VERSION_26_2: i32 = 260200;
 pub @const MAC_OS_VERSION_26_3: i32 = 260300;
 pub @const MAC_OS_VERSION_26_4: i32 = 260400;
-pub @const MAC_OS_VERSION_26_5: i32 = 260500;
-pub @const MAC_OS_VERSION_26_6: i32 = 260600;
-pub @const MAC_OS_VERSION_27_0: i32 = 270000;
 pub @const RENAME_SECLUDE: i32 = 1;
 pub @const RENAME_SWAP: i32 = 2;
 pub @const RENAME_EXCL: i32 = 4;
@@ -586,13 +583,12 @@ pub @const IOPOL_TYPE_VFS_ATIME_UPDATES: i32 = 2;
 pub @const IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES: i32 = 3;
 pub @const IOPOL_TYPE_VFS_STATFS_NO_DATA_VOLUME: i32 = 4;
 pub @const IOPOL_TYPE_VFS_TRIGGER_RESOLVE: i32 = 5;
-pub @const IOPOL_TYPE_VFS_CONTENT_PROTECTION: i32 = 6;
+pub @const IOPOL_TYPE_VFS_IGNORE_CONTENT_PROTECTION: i32 = 6;
 pub @const IOPOL_TYPE_VFS_IGNORE_PERMISSIONS: i32 = 7;
 pub @const IOPOL_TYPE_VFS_SKIP_MTIME_UPDATE: i32 = 8;
 pub @const IOPOL_TYPE_VFS_ALLOW_LOW_SPACE_WRITES: i32 = 9;
 pub @const IOPOL_TYPE_VFS_DISALLOW_RW_FOR_O_EVTONLY: i32 = 10;
 pub @const IOPOL_TYPE_VFS_ENTITLED_RESERVE_ACCESS: i32 = 14;
-pub @const IOPOL_TYPE_VFS_IGNORE_CONTENT_PROTECTION: i32 = 6;
 pub @const IOPOL_SCOPE_PROCESS: i32 = 0;
 pub @const IOPOL_SCOPE_THREAD: i32 = 1;
 pub @const IOPOL_SCOPE_DARWIN_BG: i32 = 2;
@@ -617,7 +613,6 @@ pub @const IOPOL_VFS_TRIGGER_RESOLVE_DEFAULT: i32 = 0;
 pub @const IOPOL_VFS_TRIGGER_RESOLVE_OFF: i32 = 1;
 pub @const IOPOL_VFS_CONTENT_PROTECTION_DEFAULT: i32 = 0;
 pub @const IOPOL_VFS_CONTENT_PROTECTION_IGNORE: i32 = 1;
-pub @const IOPOL_VFS_CONTENT_PROTECTION_STRICT: i32 = 2;
 pub @const IOPOL_VFS_IGNORE_PERMISSIONS_OFF: i32 = 0;
 pub @const IOPOL_VFS_IGNORE_PERMISSIONS_ON: i32 = 1;
 pub @const IOPOL_VFS_SKIP_MTIME_UPDATE_OFF: i32 = 0;
@@ -787,8 +782,6 @@ pub @const O_SYMLINK: i32 = 2097152;
 pub @const O_DSYNC: i32 = 4194304;
 /// implicitly set FD_CLOEXEC
 pub @const O_CLOEXEC: i32 = 16777216;
-/// implicitly set FD_CLOFORK
-pub @const O_CLOFORK: i32 = 134217728;
 /// no symlinks allowed in path
 pub @const O_NOFOLLOW_ANY: i32 = 536870912;
 /// open file for execute only
@@ -963,14 +956,8 @@ pub @const F_ADDSIGS_MAIN_BINARY: i32 = 113;
 pub @const FCNTL_FS_SPECIFIC_BASE: i32 = 65536;
 /// mark the dup with FD_CLOEXEC
 pub @const F_DUPFD_CLOEXEC: i32 = 67;
-/// mark the dup with FD_CLOFORK
-pub @const F_DUPFD_CLOFORK: i32 = 115;
-/// Issue multiple advisory reads async with no copy to user
-pub @const F_RDADVISEV: i32 = 116;
 /// close-on-exec flag
 pub @const FD_CLOEXEC: i32 = 1;
-/// close-on-fork flag
-pub @const FD_CLOFORK: i32 = 2;
 /// shared or read lock
 pub @const F_RDLCK: i32 = 1;
 /// unlock
@@ -1043,9 +1030,6 @@ pub @const F_ALLOCATEPERSIST: i32 = 8;
 pub @const F_PEOFPOSMODE: i32 = 3;
 /// specify volume starting postion
 pub @const F_VOLPOSMODE: i32 = 4;
-pub @const READ_ADVISE_RANGES_MAX: i32 = 64;
-/// keep read pages in the active queue
-pub @const F_RDADVISEV_NOAGE: i32 = 1;
 pub @const USER_FSIGNATURES_CDHASH_LEN: i32 = 20;
 pub @const GETSIGSINFO_PLATFORM_BINARY: i32 = 1;
 /// shared file lock
@@ -1064,6 +1048,224 @@ pub @const F_QUERY_TAG: i32 = 4;
 pub @const O_POPUP: u32 = 2147483648;
 /// small, clean popup window
 pub @const O_ALERT: i32 = 536870912;
+/// Operation not permitted
+pub @const EPERM: i32 = 1;
+/// No such file or directory
+pub @const ENOENT: i32 = 2;
+/// No such process
+pub @const ESRCH: i32 = 3;
+/// Interrupted system call
+pub @const EINTR: i32 = 4;
+/// Input/output error
+pub @const EIO: i32 = 5;
+/// Device not configured
+pub @const ENXIO: i32 = 6;
+/// Argument list too long
+pub @const E2BIG: i32 = 7;
+/// Exec format error
+pub @const ENOEXEC: i32 = 8;
+/// Bad file descriptor
+pub @const EBADF: i32 = 9;
+/// No child processes
+pub @const ECHILD: i32 = 10;
+/// Resource deadlock avoided
+pub @const EDEADLK: i32 = 11;
+/// Cannot allocate memory
+pub @const ENOMEM: i32 = 12;
+/// Permission denied
+pub @const EACCES: i32 = 13;
+/// Bad address
+pub @const EFAULT: i32 = 14;
+/// Block device required
+pub @const ENOTBLK: i32 = 15;
+/// Device / Resource busy
+pub @const EBUSY: i32 = 16;
+/// File exists
+pub @const EEXIST: i32 = 17;
+/// Cross-device link
+pub @const EXDEV: i32 = 18;
+/// Operation not supported by device
+pub @const ENODEV: i32 = 19;
+/// Not a directory
+pub @const ENOTDIR: i32 = 20;
+/// Is a directory
+pub @const EISDIR: i32 = 21;
+/// Invalid argument
+pub @const EINVAL: i32 = 22;
+/// Too many open files in system
+pub @const ENFILE: i32 = 23;
+/// Too many open files
+pub @const EMFILE: i32 = 24;
+/// Inappropriate ioctl for device
+pub @const ENOTTY: i32 = 25;
+/// Text file busy
+pub @const ETXTBSY: i32 = 26;
+/// File too large
+pub @const EFBIG: i32 = 27;
+/// No space left on device
+pub @const ENOSPC: i32 = 28;
+/// Illegal seek
+pub @const ESPIPE: i32 = 29;
+/// Read-only file system
+pub @const EROFS: i32 = 30;
+/// Too many links
+pub @const EMLINK: i32 = 31;
+/// Broken pipe
+pub @const EPIPE: i32 = 32;
+/// Numerical argument out of domain
+pub @const EDOM: i32 = 33;
+/// Result too large
+pub @const ERANGE: i32 = 34;
+/// Resource temporarily unavailable
+pub @const EAGAIN: i32 = 35;
+/// Operation would block
+pub @const EWOULDBLOCK: i32 = 35;
+/// Operation now in progress
+pub @const EINPROGRESS: i32 = 36;
+/// Operation already in progress
+pub @const EALREADY: i32 = 37;
+/// Socket operation on non-socket
+pub @const ENOTSOCK: i32 = 38;
+/// Destination address required
+pub @const EDESTADDRREQ: i32 = 39;
+/// Message too long
+pub @const EMSGSIZE: i32 = 40;
+/// Protocol wrong type for socket
+pub @const EPROTOTYPE: i32 = 41;
+/// Protocol not available
+pub @const ENOPROTOOPT: i32 = 42;
+/// Protocol not supported
+pub @const EPROTONOSUPPORT: i32 = 43;
+/// Socket type not supported
+pub @const ESOCKTNOSUPPORT: i32 = 44;
+/// Operation not supported
+pub @const ENOTSUP: i32 = 45;
+/// Protocol family not supported
+pub @const EPFNOSUPPORT: i32 = 46;
+/// Address family not supported by protocol family
+pub @const EAFNOSUPPORT: i32 = 47;
+/// Address already in use
+pub @const EADDRINUSE: i32 = 48;
+/// Can't assign requested address
+pub @const EADDRNOTAVAIL: i32 = 49;
+/// Network is down
+pub @const ENETDOWN: i32 = 50;
+/// Network is unreachable
+pub @const ENETUNREACH: i32 = 51;
+/// Network dropped connection on reset
+pub @const ENETRESET: i32 = 52;
+/// Software caused connection abort
+pub @const ECONNABORTED: i32 = 53;
+/// Connection reset by peer
+pub @const ECONNRESET: i32 = 54;
+/// No buffer space available
+pub @const ENOBUFS: i32 = 55;
+/// Socket is already connected
+pub @const EISCONN: i32 = 56;
+/// Socket is not connected
+pub @const ENOTCONN: i32 = 57;
+/// Can't send after socket shutdown
+pub @const ESHUTDOWN: i32 = 58;
+/// Too many references: can't splice
+pub @const ETOOMANYREFS: i32 = 59;
+/// Operation timed out
+pub @const ETIMEDOUT: i32 = 60;
+/// Connection refused
+pub @const ECONNREFUSED: i32 = 61;
+/// Too many levels of symbolic links
+pub @const ELOOP: i32 = 62;
+/// File name too long
+pub @const ENAMETOOLONG: i32 = 63;
+/// Host is down
+pub @const EHOSTDOWN: i32 = 64;
+/// No route to host
+pub @const EHOSTUNREACH: i32 = 65;
+/// Directory not empty
+pub @const ENOTEMPTY: i32 = 66;
+/// Too many processes
+pub @const EPROCLIM: i32 = 67;
+/// Too many users
+pub @const EUSERS: i32 = 68;
+/// Disc quota exceeded
+pub @const EDQUOT: i32 = 69;
+/// Stale NFS file handle
+pub @const ESTALE: i32 = 70;
+/// Too many levels of remote in path
+pub @const EREMOTE: i32 = 71;
+/// RPC struct is bad
+pub @const EBADRPC: i32 = 72;
+/// RPC version wrong
+pub @const ERPCMISMATCH: i32 = 73;
+/// RPC prog. not avail
+pub @const EPROGUNAVAIL: i32 = 74;
+/// Program version wrong
+pub @const EPROGMISMATCH: i32 = 75;
+/// Bad procedure for program
+pub @const EPROCUNAVAIL: i32 = 76;
+/// No locks available
+pub @const ENOLCK: i32 = 77;
+/// Function not implemented
+pub @const ENOSYS: i32 = 78;
+/// Inappropriate file type or format
+pub @const EFTYPE: i32 = 79;
+/// Authentication error
+pub @const EAUTH: i32 = 80;
+/// Need authenticator
+pub @const ENEEDAUTH: i32 = 81;
+/// Device power is off
+pub @const EPWROFF: i32 = 82;
+/// Device error, e.g. paper out
+pub @const EDEVERR: i32 = 83;
+/// Value too large to be stored in data type
+pub @const EOVERFLOW: i32 = 84;
+/// Bad executable
+pub @const EBADEXEC: i32 = 85;
+/// Bad CPU type in executable
+pub @const EBADARCH: i32 = 86;
+/// Shared library version mismatch
+pub @const ESHLIBVERS: i32 = 87;
+/// Malformed Macho file
+pub @const EBADMACHO: i32 = 88;
+/// Operation canceled
+pub @const ECANCELED: i32 = 89;
+/// Identifier removed
+pub @const EIDRM: i32 = 90;
+/// No message of desired type
+pub @const ENOMSG: i32 = 91;
+/// Illegal byte sequence
+pub @const EILSEQ: i32 = 92;
+/// Attribute not found
+pub @const ENOATTR: i32 = 93;
+/// Bad message
+pub @const EBADMSG: i32 = 94;
+/// Reserved
+pub @const EMULTIHOP: i32 = 95;
+/// No message available on STREAM
+pub @const ENODATA: i32 = 96;
+/// Reserved
+pub @const ENOLINK: i32 = 97;
+/// No STREAM resources
+pub @const ENOSR: i32 = 98;
+/// Not a STREAM
+pub @const ENOSTR: i32 = 99;
+/// Protocol error
+pub @const EPROTO: i32 = 100;
+/// STREAM ioctl timeout
+pub @const ETIME: i32 = 101;
+/// Operation not supported on socket
+pub @const EOPNOTSUPP: i32 = 102;
+/// No such policy registered
+pub @const ENOPOLICY: i32 = 103;
+/// State not recoverable
+pub @const ENOTRECOVERABLE: i32 = 104;
+/// Previous owner died
+pub @const EOWNERDEAD: i32 = 105;
+/// Interface output queue is full
+pub @const EQFULL: i32 = 106;
+/// Capabilities insufficient
+pub @const ENOTCAPABLE: i32 = 107;
+/// Must be equal largest errno
+pub @const ELAST: i32 = 107;
 
 pub extern struct Filesec;
 
@@ -1552,8 +1754,6 @@ extern "c" from "c.h" {
     pub fn readlinkat(arg0: i32, arg1: cstr, arg2: &mut i8, arg3: u64) -> i64;
     pub fn symlinkat(arg0: cstr, arg1: i32, arg2: cstr) -> i32;
     pub fn unlinkat(arg0: i32, arg1: cstr, arg2: i32) -> i32;
-    pub fn dup3(arg0: i32, arg1: i32, arg2: i32) -> i32;
-    pub fn pipe2(arg0: &mut i32, arg1: i32) -> i32;
     pub fn access(arg0: cstr, arg1: i32) -> i32;
     pub fn alarm(arg0: u32) -> u32;
     pub fn chdir(arg0: cstr) -> i32;
@@ -1728,4 +1928,5 @@ extern "c" from "c.h" {
     pub fn filesec_query_property(arg0: Filesec, arg1: i32, arg2: &mut i32) -> i32;
     pub fn filesec_set_property(arg0: Filesec, arg1: i32, arg2: *) -> i32;
     pub fn filesec_unset_property(arg0: Filesec, arg1: i32) -> i32;
+    pub fn __error() -> *;
 }

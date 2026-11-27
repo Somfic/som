@@ -1,0 +1,20 @@
+// expect: exit 3
+
+/// `lines()` gives each line of an open file, without its `\n`.
+use som::io;
+use som::c;
+
+fn main() -> i32 {
+    let path = "/tmp/som-lines-{c::getpid()}.txt";
+    io::write_file(path, "a\nbb\nccc\n") else return 100;
+    let mut file = io::File::open(path) else return 101;
+    let mut count = 0;
+    let mut total = 0;
+    for line in file.lines() {
+        count = count + 1;
+        total = total + line.len;
+    }
+    c::unlink(path.c_str);
+    if total != 6 { return 102; }
+    count
+}

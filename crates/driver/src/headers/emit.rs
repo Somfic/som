@@ -112,10 +112,13 @@ impl Emitter<'_> {
                 );
                 continue;
             }
-            // The C library's own internals: `__error`, `_IO_getc`. Windows spells its
-            // POSIX functions with one: `_access`, `_putenv_s`.
-            let internal =
-                name.starts_with("__") || (name.starts_with('_') && c.target.os() != Os::Windows);
+            // The C library's own internals: `_IO_getc`. Windows spells its POSIX functions
+            // with one: `_access`, `_putenv_s`. Kept: where `errno` is, which C reaches
+            // through a macro.
+            let errno = matches!(name, "__error" | "__errno_location");
+            let internal = !errno
+                && (name.starts_with("__")
+                    || (name.starts_with('_') && c.target.os() != Os::Windows));
             if self.library == Some(LIBC) && internal {
                 continue;
             }

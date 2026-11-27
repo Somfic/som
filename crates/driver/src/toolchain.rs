@@ -540,6 +540,7 @@ impl Target {
             "time.h",
             "io.h",
             "process.h",
+            "errno.h",
         ];
         const POSIX: &[&str] = &[
             "stdio.h",
@@ -551,6 +552,7 @@ impl Target {
             "unistd.h",
             "fcntl.h",
             "sys/wait.h",
+            "errno.h",
         ];
         match self.os() {
             Os::Windows => WINDOWS,

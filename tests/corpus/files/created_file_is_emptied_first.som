@@ -1,0 +1,17 @@
+// expect: exit 0
+
+/// `File::create` empties a file that's there: only what's written after is in it.
+use som::io;
+use som::c;
+
+fn main() -> ! {
+    let path = "/tmp/som-created-{c::getpid()}.txt";
+    io::write_file(path, "a long first line\n")?;
+    let mut file = io::File::create(path)?;
+    file.write("short")?;
+    let text = io::read_file(path)?;
+    c::unlink(path.c_str);
+    if text != "short" {
+        fail "read back {text}";
+    }
+}

@@ -1,0 +1,3 @@
+let mut file = som::io::File::open("/Users/lucas/som/example/main.som")?;
+
+som::c::printf("{file.read_all()?}");

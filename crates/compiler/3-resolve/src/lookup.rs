@@ -126,7 +126,7 @@ impl<'a> Resolver<'a> {
     }
 
     /// `module::item`, `Struct::method`, or `module::Struct::method`.
-    fn lookup_qualified(&self, path: &Path, expect: Expect) -> Option<DefId> {
+    pub(crate) fn lookup_qualified(&self, path: &Path, expect: Expect) -> Option<DefId> {
         let segments = &path.segments;
         // A module this one `use`s is named by its last part too: `io::println` after
         // `use som::io;`. That's what's meant even where another module has that name:

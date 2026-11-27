@@ -123,6 +123,32 @@ spelled out, worked out or not. Kept in the repository, a change deep inside tha
 public function fail with something new shows in review, though no signature in the diff
 changed. The language server shows the same in its signatures.
 
+## Files
+
+Opening, reading and writing files (`som::io`) fail with an `IoError`: its `kind`
+(`NotFound`, `PermissionDenied`, `AlreadyExists`, `IsFolder`, `NotFolder`, `Other`), C's
+`errno` as `code`, and the `path`. It's shown as `notes.txt: no such file`.
+
+```som
+use som::io;
+
+fn load(path: string) -> Config! {
+    let text = io::read_file(path) else fail "loading the config";
+    …
+}
+
+match io::File::open(path) {
+    file => …,
+    fail io::IoError { kind: io::IoErrorKind::NotFound, .. } => …,
+    fail e => …,
+}
+```
+
+`File::open` (to read), `File::create` (emptied first) and `File::append` give a `File!`;
+`read_all`, `write` and `lines` work on it, and it's closed when dropped. `write` flushes,
+so what it wrote is in the file when it returns, and a failure to write is its own.
+`io::read_file` and `io::write_file` do it all at once.
+
 ## How it's built
 
 - **`T!` is `Outcome<T>`** (`std/error.som`), an ordinary enum, `Ok(T)` or

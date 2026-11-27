@@ -31,11 +31,18 @@ pub(super) fn diagnostic(error: &TypeError) -> Diagnostic {
             what,
             ty,
             optional,
+            in_failable,
             span,
         } => {
             let d = Diagnostic::error(msg![code(*what), " of what can't fail"])
                 .with_label(Label::primary(span.clone(), msg!["this is ", ty.clone(), ", which can't fail"]));
             match (optional, *what) {
+                (true, "?") if *in_failable => d.with_hint(msg![
+                    "to fail when it's ",
+                    code("none"),
+                    ", say why: ",
+                    code("value else fail \"…\"")
+                ]),
                 (true, "?") => d.with_hint(msg![
                     "for an optional, give a fallback for ",
                     code("none"),
