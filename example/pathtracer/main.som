@@ -1,0 +1,317 @@
+use som::gpu;
+use wgpu;
+
+// A path tracer on the GPU. Each frame a kernel follows a few paths through every pixel, each
+// bouncing at random off what it meets until it reaches the light, and adds what they bring
+// to the pixel's running sum; a shader shows the sums' averages. The picture starts noisy and
+// clears as the samples add up. All the light comes from the panel in the ceiling: the
+// colours on the floor and the soft shadows are light that bounced there.
+//
+// Drag with the left button to look around, Up and Down to come closer or go back.
+
+@const W: usize = 640;
+@const H: usize = 360;
+/// Paths through each pixel, each frame.
+@const PER_FRAME: i32 = 4;
+@const BOUNCES: i32 = 10;
+@const EPSILON: f32 = 0.0005;
+@const FAR: f32 = 1000000.0;
+@const GLASS: f32 = 1.5;
+
+/// What a surface does with the light that meets it.
+enum Kind {
+    /// Scatters it every way.
+    Diffuse,
+    /// Reflects it, blurred by the hit's `fuzz`.
+    Metal,
+    /// Reflects or lets it through, bent.
+    Glass,
+    /// Gives it off.
+    Light,
+}
+
+impl Copy for Kind {}
+
+struct Ray { origin: Vec3, dir: Vec3 }
+impl Copy for Ray {}
+
+struct Hit {
+    t: f32,
+    point: Vec3,
+    /// Facing back along the ray.
+    normal: Vec3,
+    /// Whether the ray came from outside: into glass, rather than out of it.
+    entering: bool,
+    color: Vec3,
+    kind: Kind,
+    fuzz: f32,
+}
+
+impl Copy for Hit {}
+
+// Random numbers: a PCG hash of the last one.
+
+fn hash(x: u32) -> u32 {
+    let h = x * 747796405 + 2891336453;
+    let w = ((h >> ((h >> 28) + 4)) ^ h) * 277803737;
+    (w >> 22) ^ w
+}
+
+/// From 0 up to 1.
+fn random(state: &mut u32) -> f32 {
+    *state = hash(*state);
+    (*state >> 8) as f32 / 16777216.0
+}
+
+/// A direction picked evenly from all of them.
+fn random_direction(state: &mut u32) -> Vec3 {
+    let z = random(state) * 2.0 - 1.0;
+    let a = random(state) * 6.2831853;
+    let r = (1.0 - z * z).max(0.0).sqrt();
+    vec3(r * a.cos(), r * a.sin(), z)
+}
+
+fn reflect(d: Vec3, n: Vec3) -> Vec3 = d - n * (2.0 * d.dot(&n));
+
+// The scene: a box from x = -1 to 1, y = 0 to 2 and z = -2 to 0, open at the front, with a
+// light in its ceiling and three balls on its floor.
+
+/// Within the box's walls, give or take.
+fn in_box(p: Vec3) -> bool =
+    p.x > -1.001 && p.x < 1.001 && p.y > -0.001 && p.y < 2.001 && p.z > -2.001 && p.z < 0.001;
+
+/// Where `ray` meets the wall of points `p` with `p.dot(n) == d`, if nearer than `nearest`.
+fn wall(ray: Ray, n: Vec3, d: f32, nearest: f32) -> f32? {
+    let along = n.dot(&ray.dir);
+    if along.abs() < 0.000001 { return none; }
+    let t = (d - n.dot(&ray.origin)) / along;
+    if t > EPSILON && t < nearest && in_box(ray.origin + ray.dir * t) { t } else { none }
+}
+
+/// Where `ray` meets the ball at `c` of radius `r`, if nearer than `nearest`.
+fn ball(ray: Ray, c: Vec3, r: f32, nearest: f32) -> f32? {
+    let oc = ray.origin - c;
+    let b = oc.dot(&ray.dir);
+    let disc = b * b - oc.dot(&oc) + r * r;
+    if disc < 0.0 { return none; }
+    let root = disc.sqrt();
+    let mut t = -b - root;
+    if t < EPSILON { t = -b + root; }
+    if t > EPSILON && t < nearest { t } else { none }
+}
+
+/// A hit `t` along `ray` on a surface whose outside faces `outward`.
+fn surface(ray: Ray, t: f32, outward: Vec3, color: Vec3, kind: Kind, fuzz: f32) -> Hit {
+    let entering = outward.dot(&ray.dir) < 0.0;
+    Hit {
+        t,
+        point: ray.origin + ray.dir * t,
+        normal: if entering { outward } else { -outward },
+        entering,
+        color,
+        kind,
+        fuzz,
+    }
+}
+
+/// The nearest thing `ray` meets, if any.
+fn hit(ray: Ray) -> Hit? {
+    let white = vec3(0.73, 0.73, 0.73);
+    let mut best: Hit? = none;
+    let mut nearest = FAR;
+
+    let floor = wall(ray, vec3(0.0, 1.0, 0.0), 0.0, nearest);
+    if floor {
+        nearest = floor;
+        best = surface(ray, floor, vec3(0.0, 1.0, 0.0), white, Kind::Diffuse, 0.0);
+    }
+    let ceiling = wall(ray, vec3(0.0, 1.0, 0.0), 2.0, nearest);
+    if ceiling {
+        nearest = ceiling;
+        let p = ray.origin + ray.dir * ceiling;
+        if p.x.abs() < 0.35 && (p.z + 1.0).abs() < 0.35 {
+            best = surface(ray, ceiling, vec3(0.0, -1.0, 0.0), vec3(15.0, 13.5, 11.0), Kind::Light, 0.0);
+        } else {
+            best = surface(ray, ceiling, vec3(0.0, -1.0, 0.0), white, Kind::Diffuse, 0.0);
+        }
+    }
+    let back = wall(ray, vec3(0.0, 0.0, 1.0), -2.0, nearest);
+    if back {
+        nearest = back;
+        best = surface(ray, back, vec3(0.0, 0.0, 1.0), white, Kind::Diffuse, 0.0);
+    }
+    let left = wall(ray, vec3(1.0, 0.0, 0.0), -1.0, nearest);
+    if left {
+        nearest = left;
+        best = surface(ray, left, vec3(1.0, 0.0, 0.0), vec3(0.65, 0.05, 0.05), Kind::Diffuse, 0.0);
+    }
+    let right = wall(ray, vec3(1.0, 0.0, 0.0), 1.0, nearest);
+    if right {
+        nearest = right;
+        best = surface(ray, right, vec3(-1.0, 0.0, 0.0), vec3(0.12, 0.45, 0.15), Kind::Diffuse, 0.0);
+    }
+
+    let matte = vec3(-0.5, 0.35, -1.35);
+    let t = ball(ray, matte, 0.35, nearest);
+    if t {
+        nearest = t;
+        let p = ray.origin + ray.dir * t;
+        best = surface(ray, t, (p - matte) / 0.35, vec3(0.75, 0.75, 0.8), Kind::Diffuse, 0.0);
+    }
+    let gold = vec3(0.45, 0.45, -1.5);
+    let t = ball(ray, gold, 0.45, nearest);
+    if t {
+        nearest = t;
+        let p = ray.origin + ray.dir * t;
+        best = surface(ray, t, (p - gold) / 0.45, vec3(1.0, 0.78, 0.34), Kind::Metal, 0.08);
+    }
+    let glass = vec3(-0.1, 0.3, -0.65);
+    let t = ball(ray, glass, 0.3, nearest);
+    if t {
+        let p = ray.origin + ray.dir * t;
+        best = surface(ray, t, (p - glass) / 0.3, vec3(1.0, 1.0, 1.0), Kind::Glass, 0.0);
+    }
+    best
+}
+
+/// Which way the ray goes on from glass: through it, bent, or reflected, as likely as
+/// Schlick's approximation of how much it reflects at that angle.
+fn through_glass(d: Vec3, h: Hit, rng: &mut u32) -> Vec3 {
+    let eta = if h.entering { 1.0 / GLASS } else { GLASS };
+    let cos = (-d).dot(&h.normal).min(1.0);
+    let sin2 = eta * eta * (1.0 - cos * cos);
+    let r0 = (1.0 - GLASS) / (1.0 + GLASS);
+    let reflects = r0 * r0 + (1.0 - r0 * r0) * (1.0 - cos).pow(5.0);
+    if sin2 > 1.0 || reflects > random(rng) {
+        return reflect(d, h.normal);
+    }
+    let across = (d + h.normal * cos) * eta;
+    across - h.normal * (1.0 - across.dot(&across)).abs().sqrt()
+}
+
+/// The light that comes back along `ray`, following one path.
+fn radiance(start: Ray, rng: &mut u32) -> Vec3 {
+    let mut ray = start;
+    // How much of what's found further on reaches the eye.
+    let mut through = vec3(1.0, 1.0, 1.0);
+    let mut found = vec3(0.0, 0.0, 0.0);
+    for bounce in 0..BOUNCES {
+        let h = hit(ray);
+        if !h { break; }
+        let mut dir = ray.dir;
+        match h.kind {
+            Kind::Light => {
+                found = found + through * h.color;
+                break;
+            }
+            Kind::Diffuse => {
+                // Cosine-weighted, so each direction's share is already in how often it's picked.
+                dir = (h.normal + random_direction(rng)).normalized;
+                through = through * h.color;
+            }
+            Kind::Metal => {
+                dir = (reflect(ray.dir, h.normal) + random_direction(rng) * h.fuzz).normalized;
+                // Blurred below the surface: taken in.
+                if dir.dot(&h.normal) <= 0.0 { break; }
+                through = through * h.color;
+            }
+            Kind::Glass => {
+                dir = through_glass(ray.dir, h, rng);
+            }
+        }
+        // Russian roulette: a dim path is ended at random, the rest made brighter to match.
+        if bounce > 2 {
+            let keep = through.x.max(through.y.max(through.z)).min(0.95);
+            if random(rng) > keep { break; }
+            through = through / keep;
+        }
+        ray = Ray { origin: h.point + dir * 0.001, dir };
+    }
+    found
+}
+
+/// Brightness without end into 0 to 1 (ACES, fitted), then as the screen shows it.
+fn tone(c: Vec3) -> Vec3 {
+    let mapped = (c * (c * 2.51 + vec3(0.03, 0.03, 0.03))) / (c * (c * 2.43 + vec3(0.59, 0.59, 0.59)) + vec3(0.14, 0.14, 0.14));
+    let m = mapped.clamp(0.0, 1.0);
+    vec3(m.x.pow(0.4545), m.y.pow(0.4545), m.z.pow(0.4545))
+}
+
+fn main() {
+    let mut gpu = wgpu::Gpu::open("pathtracer", 1280, 720);
+    gpu.say("pathtracer: drag to look around, Up/Down to come closer or go back");
+
+    // Each pixel's light summed over its paths, and how many: one board read, the other written.
+    let mut sums: gpu::Buffer<Vec4> = gpu.buffer(W * H);
+    let mut spare: gpu::Buffer<Vec4> = gpu.buffer(W * H);
+    let mut trace = wgpu::Kernel::empty();
+    let mut show = wgpu::Shader::empty();
+    let mut hud = wgpu::Painter::new(&mut gpu);
+
+    let mut yaw: f32 = 0.0;
+    let mut pitch: f32 = 0.0;
+    let mut distance: f32 = 2.8;
+    let mut frame: u32 = 0;
+    while gpu.frame() {
+        let moved = gpu.mouse_moved();
+        if gpu.left_held() && (moved.x != 0.0 || moved.y != 0.0) {
+            yaw = yaw - moved.x * 0.004;
+            pitch = (pitch + moved.y * 0.004).clamp(-1.2, 1.2);
+            frame = 0;
+        }
+        let step = 2.0 * gpu.frame_time();
+        if gpu.held(wgpu::Key::Up) && distance > 1.0 {
+            distance = distance - step;
+            frame = 0;
+        }
+        if gpu.held(wgpu::Key::Down) && distance < 8.0 {
+            distance = distance + step;
+            frame = 0;
+        }
+
+        let target = vec3(0.0, 1.0, -1.0);
+        let eye = target + vec3(yaw.sin() * pitch.cos(), pitch.sin(), yaw.cos() * pitch.cos()) * distance;
+        let forward = (target - eye).normalized;
+        let right = forward.cross(&vec3(0.0, 1.0, 0.0)).normalized;
+        let up = right.cross(&forward);
+
+        // Moving starts the sums again: from nothing, rather than what came before.
+        let before = sums;
+        let fresh = frame == 0;
+        let seed = frame;
+        trace.fill(&mut gpu, &spare, (i) => {
+            let mut rng = hash(i as u32 * 1973 + seed * 9277 + 26699);
+            let x = (i % W) as f32;
+            let y = (i / W) as f32;
+            let mut light = vec3(0.0, 0.0, 0.0);
+            for _ in 0..PER_FRAME {
+                // Somewhere in the pixel, so the edges come out smooth.
+                let sx = ((x + random(&mut rng)) / W as f32 * 2.0 - 1.0) * (W as f32 / H as f32) * 0.5;
+                let sy = (1.0 - (y + random(&mut rng)) / H as f32 * 2.0) * 0.5;
+                let dir = (forward + right * sx + up * sy).normalized;
+                // A rare path that finds the light through glass is too bright to average away.
+                light = light + radiance(Ray { origin: eye, dir }, &mut rng).min(&vec3(20.0, 20.0, 20.0));
+            }
+            let sum = if fresh { vec4(0.0, 0.0, 0.0, 0.0) } else { before.get(i) };
+            sum + vec4(light, PER_FRAME as f32)
+        });
+        let filled = spare;
+        spare = sums;
+        sums = filled;
+        frame = frame + 1;
+
+        let shown = sums;
+        show.fullscreen(&mut gpu, (frag) => {
+            let x = (frag.uv.x * W as f32).min(W as f32 - 1.0) as usize;
+            let y = (frag.uv.y * H as f32).min(H as f32 - 1.0) as usize;
+            let sum = shown.get(y * W + x);
+            vec4(tone(sum.xyz / sum.w.max(1.0)), 1.0)
+        });
+
+        let status = "{frame as i32 * PER_FRAME} samples  {gpu.fps()} fps";
+        let width = hud.text_width(status, 16.0);
+        hud.rect(&mut gpu, 10.0, 10.0, width + 20.0, 30.0, vec4(0.0, 0.0, 0.0, 0.6));
+        hud.text(&mut gpu, 20.0, 17.0, 16.0, status, vec4(1.0, 0.95, 0.85, 1.0));
+        gpu.present();
+    }
+}

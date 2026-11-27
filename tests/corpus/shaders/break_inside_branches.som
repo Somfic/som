@@ -1,0 +1,46 @@
+// expect: exit 0
+
+/// A `break` inside an `if` inside another, or inside a `match` arm, is laid out as `if`s and
+/// a loop: the branches around it still meet inside the loop, not after it.
+enum Kind { Light, Matte, Metal }
+
+struct Uniforms { kind: i32 }
+
+fn kind(u: &Uniforms) -> Kind = if u.kind == 0 { Kind::Light } else if u.kind == 1 { Kind::Matte } else { Kind::Metal };
+
+fn nested(u: &Uniforms) -> f32 {
+    let mut s = 0.0;
+    for i in 0..10 {
+        if i > 2 {
+            if s > 1.0 { break; }
+            s = s / 2.0;
+        }
+        s = s + 1.0;
+    }
+    s
+}
+
+fn in_match(u: &Uniforms) -> f32 {
+    let mut s = 0.0;
+    for _ in 0..10 {
+        match kind(u) {
+            Kind::Light => { break; }
+            Kind::Matte => {
+                if s > 2.0 { break; }
+                s = s + 1.0;
+            }
+            Kind::Metal => { s = s + 2.0; }
+        }
+        s = s * 0.5;
+    }
+    s
+}
+
+@fragment
+fn shade(frag: Fragment, u: &Uniforms) -> Vector<4, f32> = vec4(nested(u), in_match(u), 0.0, 1.0);
+
+fn main() -> i32 {
+    let source = @shader(shade);
+    if source.len < 100 { return 1; }
+    0
+}

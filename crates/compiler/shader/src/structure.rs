@@ -11,7 +11,8 @@
 //!
 //! A `return` in the middle, `if far { return sky; }`, is a straight run of blocks to a
 //! `return` that nothing else jumps into: a dead end, left out when working out where
-//! branches meet and how a loop is left, and written where it is.
+//! branches meet and how a loop is left, and written where it is. Inside a loop, a `break`
+//! is a dead end in the same way when working out where its branches meet.
 
 use som_mir::{Body, BlockId, TerminatorKind};
 use std::collections::{HashMap, HashSet};
@@ -348,7 +349,52 @@ impl Graph {
         // end, because one side returns early, where the others meet without the dead ends.
         let all = post_dominators(&succs, &unreachable, |_| false);
         let living = post_dominators(&succs, &unreachable, |b| dead[b]);
-        let ipdom = (0..n).map(|b| all[b].or(living[b])).collect();
+        // Inside a loop, a `break` is a dead end too: in `if a { if b { break; } } rest` both
+        // `if`s meet at `rest`, though over the whole function they only meet after the loop.
+        // So each loop's blocks have their own post-dominators, as if each pass through it
+        // ended where it goes back to the header, and its `break`s weren't there.
+        let mut unbroken: Vec<Option<usize>> = vec![None; n];
+        let mut innermost: Vec<Option<usize>> = vec![None; n];
+        for l in loops.values() {
+            for &b in &l.body {
+                if innermost[b].is_none_or(|i: usize| loops[&i].body.len() > l.body.len()) {
+                    innermost[b] = Some(l.header);
+                }
+            }
+        }
+        for l in loops.values() {
+            // Node `n` is where a pass ends: the header, the next time round.
+            let back = n;
+            let breaks = |b: usize| b != l.header && l.exit.is_some_and(|e| succs[b].contains(&e));
+            let within: Vec<Vec<usize>> = (0..=n)
+                .map(|b| {
+                    if b == n || !l.body.contains(&b) {
+                        return Vec::new();
+                    }
+                    let to = succs[b].iter().map(|&s| if s == l.header { back } else { s });
+                    to.filter(|&s| s == back || l.body.contains(&s)).collect()
+                })
+                .collect();
+            let mut never = unreachable.clone();
+            never.push(false);
+            let left_out = |b: usize| b < n && (!l.body.contains(&b) || breaks(b) || dead[b]);
+            let pdom = post_dominators(&within, &never, left_out);
+            for &b in &l.body {
+                if innermost[b] == Some(l.header) {
+                    unbroken[b] = pdom[b].filter(|&p| p != back);
+                }
+            }
+        }
+        let ipdom = (0..n)
+            .map(|b| {
+                let merge = all[b].or(living[b]);
+                // A header's other side is the loop's way out: laid out as it was.
+                let Some(header) = innermost[b].filter(|&h| h != b) else { return merge };
+                let body = &loops[&header].body;
+                let inside = |m: Option<usize>| m.is_some_and(|m| body.contains(&m));
+                if !inside(merge) && inside(unbroken[b]) { unbroken[b] } else { merge }
+            })
+            .collect();
 
         Some(Graph {
             ids,

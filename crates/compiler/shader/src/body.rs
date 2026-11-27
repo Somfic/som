@@ -1003,7 +1003,7 @@ fn vector_op(t: &Translator, func: FuncId, args: &[String]) -> Option<String> {
     if op == "new" {
         return t.native_vector(of).map(|_| args[0].clone());
     }
-    t.vector(of)?;
+    let (scalar, n) = t.vector(of)?;
     let a = args.first()?;
     Some(match (op, &args[1..]) {
         ("add", [b]) => format!("({a} + {b})"),
@@ -1017,7 +1017,12 @@ fn vector_op(t: &Translator, func: FuncId, args: &[String]) -> Option<String> {
         ("abs", []) => format!("abs({a})"),
         ("negate", []) => format!("(-{a})"),
         ("dot" | "min" | "max", [b]) => format!("{op}({a}, {b})"),
-        ("mix" | "clamp", [b, c]) => format!("{op}({a}, {b}, {c})"),
+        ("mix", [b, c]) => format!("mix({a}, {b}, {c})"),
+        // WGSL's `clamp` takes bounds of the vector's own type.
+        ("clamp", [low, high]) => {
+            let ty = scalar.vector(n);
+            format!("clamp({a}, {ty}({low}), {ty}({high}))")
+        }
         _ => return None,
     })
 }

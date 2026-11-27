@@ -211,8 +211,13 @@ file each next to the output (`main.stripes.wgsl`); `--emit wgsl=DIR` puts them 
 `--emit wgsl=-` prints them. Every shader is compiled for the GPU while checking, used or not,
 so `som check` and the editor report a broken one before anything asks for it.
 
-`tests/tests/wgsl.rs` checks every compiling shader in `tests/corpus/shaders` with naga, wgpu's
-own shader compiler. `SOM_WGSL_EXTRA=example/shooter` checks one more program's.
+Each shader's WGSL is then read and checked by naga, wgpu's own shader compiler
+(`crates/compiler/shader/src/validate.rs`), so WGSL that wgpu would refuse when the program
+runs is an error while compiling instead. That's a bug in the translator, and the error says
+so, with naga's words and the line of WGSL.
+
+`tests/tests/wgsl.rs` also fails a shader in `tests/corpus/shaders` that falls back to a jump
+table. `SOM_WGSL_EXTRA=$PWD/example/shooter` checks one more program's (an absolute path).
 
 ## Vectors
 

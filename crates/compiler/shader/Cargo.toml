@@ -8,3 +8,4 @@ description = "Shaders: MIR to WGSL"
 som_base = { path = "../../core/base" }
 som_lang = { path = "../../core/lang" }
 som_mir = { path = "../../core/mir" }
+naga = { version = "30", features = ["wgsl-in"] }

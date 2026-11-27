@@ -1,0 +1,16 @@
+// expect: exit 0
+
+/// A vector's `clamp` takes numbers; WGSL's takes bounds of the vector's own type.
+@fragment
+fn clamped(frag: Fragment) -> Vector<4, f32> {
+    let c = vec3(frag.uv.x * 2.0, frag.uv.y - 0.5, 0.5).clamp(0.0, 1.0);
+    vec4(c, 1.0)
+}
+
+fn main() -> i32 {
+    let source = @shader(clamped);
+    if source.len < 100 { return 1; }
+    let c = vec3(2.0, -1.0, 0.5).clamp(0.0, 1.0);
+    if c.x != 1.0 || c.y != 0.0 || c.z != 0.5 { return 2; }
+    0
+}

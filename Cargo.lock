@@ -1227,6 +1227,7 @@ dependencies = [
 name = "som_shader"
 version = "0.1.0"
 dependencies = [
+ "naga",
  "som_base",
  "som_lang",
  "som_mir",

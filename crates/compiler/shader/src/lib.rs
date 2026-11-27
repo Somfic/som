@@ -25,6 +25,7 @@ mod error;
 mod names;
 mod structure;
 mod types;
+mod validate;
 mod vertex;
 
 pub use compute::WORKGROUP;
@@ -119,10 +120,26 @@ pub fn wgsl(mir: &Mir, entry: FuncId) -> Result<String, Vec<ShaderError>> {
         seen.push(key);
         new
     });
-    match errors.is_empty() {
-        true => Ok(source),
-        false => Err(errors),
+    if !errors.is_empty() {
+        return Err(errors);
     }
+    if let Err(invalid) = validate::validate(&source) {
+        let func = &mir.funcs[entry];
+        let bug = "this is a bug in som's shader compiler, not the program. naga says: ";
+        let hint = match invalid.line {
+            Some((n, text)) => msg![bug, invalid.words, ", at line ", n.to_string(), " of ", code("som build --emit wgsl=-"), ": ", code(text)],
+            None => msg![bug, invalid.words, " (", code("som build --emit wgsl=-"), " prints the WGSL)"],
+        };
+        return Err(vec![ShaderError {
+            shader: short_fn(&func.name),
+            message: msg!["the WGSL made for this shader is invalid"],
+            span: head(&func.span),
+            label: msg!["compiled from here"],
+            hint: Some(hint),
+            calls: Vec::new(),
+        }]);
+    }
+    Ok(source)
 }
 
 /// Parameters of a function bound to the uniforms, each by its index and the path of the part
